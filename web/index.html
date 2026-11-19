@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Momentum Desk</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:dark;--bg:#0a0a0c;--panel:#121216;--panel2:#18181d;--line:rgba(201,164,92,.18);--hair:rgba(255,255,255,.07);--gold:#c9a45c;--gold2:#e6cf9a;--ink:#f2ede2;--mute:#8d887b;--ok:#5fd0a0;--bad:#d9645a;--vw:#a78bfa;--serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;--sans:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:radial-gradient(1200px 500px at 15% -10%,rgba(201,164,92,.09),transparent 60%),var(--bg);color:var(--ink);font:15px/1.55 var(--sans);overflow-x:clip;min-height:100vh}
+.band{padding:22px max(3.5vw,16px)}
+header.band{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.brand{font:600 34px/1 var(--serif);letter-spacing:.02em}.brand i{font-style:normal;color:var(--gold)}
+.meta{color:var(--mute);font-size:13px;margin-top:4px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{padding:6px 14px;border-radius:99px;font-size:12px;font-weight:600;letter-spacing:.04em;border:1px solid var(--line);color:var(--gold2);white-space:nowrap}
+.pill.live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:8px;box-shadow:0 0 8px var(--ok)}
+.pill.off{color:var(--mute)}
+button{font:600 13px var(--sans);letter-spacing:.04em;min-height:38px;padding:0 18px;border-radius:99px;border:1px solid var(--gold);background:transparent;color:var(--gold2);cursor:pointer}
+button:hover{background:rgba(201,164,92,.12)}button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
+.err{margin:16px max(3.5vw,16px) 0;padding:12px 18px;border-radius:12px;border:1px solid rgba(217,100,90,.5);background:rgba(217,100,90,.1);color:#f1b4ad;font-size:14px}
+.grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:22px;align-items:start}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.stack>.card+.card{margin-top:22px}
+.right{position:sticky;top:12px}
+h2{font:600 24px/1.1 var(--serif);margin:0 0 14px;letter-spacing:.02em}
+h3{font:600 21px/1.2 var(--serif);margin:26px 0 4px;padding-top:18px;border-top:1px solid var(--hair)}
+.expl{color:var(--mute);font-size:13px;margin:0 0 10px}
+.eyebrow{font-size:12px;color:var(--mute);letter-spacing:.06em}
+.hero{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+.tk{font:600 clamp(38px,5vw,56px)/1 var(--serif);letter-spacing:.02em}
+.co{color:#d8d2c3;font-size:14px;margin-top:4px}
+.sig{font:600 clamp(22px,3vw,30px)/1.1 var(--serif);margin-top:8px;color:var(--c)}
+.ring{--c:var(--gold);position:relative;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),#26262d 0);flex:none}
+.ring::after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--panel)}
+.ring b{position:relative;z-index:1;font:600 34px/1 var(--serif)}.ring small{position:absolute;z-index:1;bottom:20px;font-size:11px;color:var(--mute);letter-spacing:.08em}
+.go{--c:var(--ok)}.ready{--c:var(--gold)}.late{--c:var(--bad)}.idle{--c:var(--mute)}
+.mute{color:var(--mute);font-size:13px}
+.story{padding:14px 16px;border-left:3px solid var(--gold);background:rgba(201,164,92,.06);border-radius:0 12px 12px 0;font-size:15px;color:#e9e3d4}
+.story p{margin:0 0 8px}.story p:last-child{margin:0}
+.fig{position:relative;height:320px;margin:10px 0 4px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--mute)}.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:6px;border-radius:2px}
+ul.rules{list-style:none;margin:10px 0 0;padding:0}
+ul.rules li{padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
+ul.rules .top{display:flex;justify-content:space-between;gap:12px}ul.rules .why{color:var(--mute);font-size:13px;margin-top:3px}
+ul.tips{list-style:none;margin:0;padding:0}ul.tips li{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px;color:#e2dccd}ul.tips li:last-child{border-bottom:0}
+.ic{font-style:normal;flex:none;width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px;border:1px solid currentColor}
+.ok{color:var(--ok)}.warn{color:var(--gold)}.bad{color:var(--bad)}.pts{font-weight:600;white-space:nowrap}
+ul.news{list-style:none;margin:0;padding:0}ul.news li{padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px;color:#d8d2c3}ul.news a{color:inherit;text-decoration-color:var(--gold)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:11px;color:var(--mute);font-weight:500;letter-spacing:.06em;text-align:left;padding:0 6px 8px}td{padding:10px 6px;border-top:1px solid var(--hair);vertical-align:top}
+.n{text-align:right;white-space:nowrap}th.n{text-align:right}
+tr.row{cursor:pointer}tr.row:hover td{background:rgba(201,164,92,.05)}tr.sel td{background:rgba(201,164,92,.09)}tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
+.sym{font:600 20px var(--serif)}.rw{display:block;color:var(--mute);font-size:12px;margin-top:2px}
+.tag{display:inline-block;padding:3px 11px;border-radius:99px;font-size:11px;font-weight:600;letter-spacing:.05em;white-space:nowrap;border:1px solid var(--c);color:var(--c)}
+.tag.go{background:rgba(95,208,160,.12)}
+.scroll{overflow-x:auto}
+.action{margin:20px max(3.5vw,16px) 0;border-radius:18px;padding:22px 26px;border:1px solid var(--c);background:linear-gradient(90deg,color-mix(in srgb,var(--c) 16%,#0a0a0c),#101014);display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.action .big{font:600 clamp(26px,4vw,40px)/1.1 var(--serif);color:var(--c)}.action .sub{margin-top:6px;font-size:15px;color:var(--ink);max-width:85ch}
+.action .clock{font:600 22px var(--serif);color:var(--gold2);white-space:nowrap;text-align:right}.action .clock small{display:block;font:500 12px var(--sans);color:var(--mute);letter-spacing:.05em}
+.cells{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.cells>div{border:1px solid var(--hair);border-radius:10px;padding:10px 12px;background:var(--panel)}.cells span{display:block;font-size:11px;color:var(--mute);letter-spacing:.06em}.cells b{font:600 24px/1.2 var(--serif);white-space:nowrap}.cells small{display:block;font-size:12px;color:var(--mute);line-height:1.4;margin-top:2px}
+.cells.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pillars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.pillars>div{border:1px solid var(--hair);border-radius:10px;padding:10px;background:var(--panel);text-align:center}.pillars b{display:block;font:600 20px var(--serif);margin:4px 0 2px}.pillars span{font-size:11px;color:var(--mute);display:block;line-height:1.35}
+.scen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.scen>div{border:1px solid var(--hair);border-top:3px solid var(--c);border-radius:10px;padding:12px;background:var(--panel);font-size:14px;color:#e2dccd}.scen b{display:block;color:var(--c);font-size:12px;letter-spacing:.06em;margin-bottom:4px}
+ol.todo{margin:6px 0 0;padding-left:22px;font-size:15px;color:#ebe5d6}ol.todo li{margin:7px 0}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.omsg{margin:10px 0 0;font-size:14px}details{margin-top:14px}summary{cursor:pointer;color:var(--gold2);font-weight:600;min-height:40px;display:flex;align-items:center}
+.steps{margin:0;padding-left:20px;color:#d8d2c3;font-size:14px}.steps li{margin:6px 0}
+.foot{color:var(--mute);font-size:12px;max-width:110ch}
+.mood{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.mood span{border:1px solid var(--hair);border-radius:10px;padding:8px 12px;background:var(--panel);font-size:13px}.mood b{font:600 20px var(--serif);display:block}
+.learn{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.learn .card{font-size:14px;color:#d8d2c3}
+dl.gl{margin:0}dl.gl dt{color:var(--gold2);font-weight:600;margin-top:10px}dl.gl dd{margin:2px 0 0}
+.sigtab td:first-child{white-space:nowrap;width:1%}
+.lv td{font-size:14px}.lv .res{color:var(--bad)}.lv .sup{color:var(--ok)}.lv tr.now td{color:var(--gold2);font-weight:600;background:rgba(201,164,92,.07)}
+.src{font-size:11px;color:var(--mute);border:1px solid var(--hair);border-radius:99px;padding:1px 8px;margin-left:6px;white-space:nowrap}
+.tipgrp{margin:12px 0 0}.tipgrp>b{display:block;font-size:12px;letter-spacing:.06em;margin-bottom:2px}
+ul.tips li span b{display:block;color:var(--ink);font-weight:600}ul.tips li span small{display:block;color:var(--mute);font-size:13px;line-height:1.45}
+.tally{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 2px}.tally span{border:1px solid var(--hair);border-radius:99px;padding:4px 12px;font-size:13px;background:var(--panel)}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form label{font-size:12px;color:var(--mute);letter-spacing:.05em;display:block}
+.form input{width:100%;margin-top:4px;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:500 16px var(--sans)}
+.form input:focus-visible{outline:2px solid var(--gold2);outline-offset:1px}
+ul.al{list-style:none;margin:0;padding:0}ul.al li{padding:8px 0;border-bottom:1px solid var(--hair);font-size:13px;color:#d8d2c3}ul.al li:last-child{border-bottom:0}ul.al b{color:var(--ink);font-weight:600}ul.al time{color:var(--mute);margin-right:8px;font-variant-numeric:tabular-nums}
+.size{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(201,164,92,.06);font-size:15px}
+details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
+@media(max-width:1000px){.grid,.learn{grid-template-columns:minmax(0,1fr)}.right{position:static}}
+@media(max-width:700px){.cells,.cells.three,.scen{grid-template-columns:repeat(2,minmax(0,1fr))}.pillars{grid-template-columns:repeat(3,minmax(0,1fr))}.action .clock{text-align:left}.hide-s{display:none}}
+@media(max-width:520px){.card{padding:18px}.scen{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<header class="band">
+ <div><div class="brand">Momentum<i>.</i>Desk</div><div class="meta" id="meta">Connecting...</div></div>
+ <div class="pills"><span class="pill" id="mode">-</span><span class="pill" id="sess">-</span><span class="pill" id="win">-</span><span class="pill" id="push" title="Phone notifications sent by the server">-</span><button id="snd">Turn on browser alerts</button></div>
+</header>
+<div class="err" id="err" hidden></div>
+<section class="action" id="act" style="--c:var(--gold)"><div><div class="big" id="actBig">Connecting...</div><div class="sub" id="actSub"></div></div><div class="clock" id="clk"></div></section>
+<main class="band grid">
+ <section class="card" id="tk"><h2>Scanning the market</h2><p class="mute">The first scan takes 10 to 30 seconds. Float, short interest and SEC filings load for each stock over the next minute.</p></section>
+ <section class="stack right">
+  <div class="card scroll"><h2>Best stocks right now</h2>
+   <table><thead><tr><th>STOCK</th><th>SIGNAL</th><th class="n">SCORE</th><th class="n">PRICE</th><th class="n">% UP</th><th class="n hide-s">FLOAT</th></tr></thead><tbody id="rows"></tbody></table>
+   <p class="mute" id="empty" hidden>No stock matches right now. That's normal: no setup, no trade.</p>
+   <p class="mute" style="margin:12px 0 0">Ranked best first. Click a stock for the full analysis.</p>
+  </div>
+  <div class="card"><h2>Your risk</h2><p class="expl">Used to tell you exactly how many shares to buy. Saved in this browser only.</p>
+   <div class="form"><label>ACCOUNT SIZE ($)<input id="acct" type="number" min="0" step="100" inputmode="decimal" placeholder="e.g. 5000"></label>
+   <label>RISK PER TRADE (%)<input id="riskp" type="number" min="0.1" max="5" step="0.1" inputmode="decimal" placeholder="1"></label></div>
+   <p class="mute" id="riskTxt" style="margin:10px 0 0"></p></div>
+  <div class="card" id="moodCard"><h2>Market mood</h2><p class="mute">Loading...</p></div>
+  <div class="card" id="alCard"><h2>Recent alerts</h2><p class="mute">None yet today.</p></div>
+  <div class="card"><h2>Golden rules</h2>
+   <ol class="steps">
+    <li>Decide your stop <b>before</b> you buy, and never move it lower.</li>
+    <li>Risk the same small amount on every trade (about 1% of your account).</li>
+    <li>Stop for the day after 3 losses in a row. Never try to "win it back".</li>
+    <li>Don't chase. If you missed the entry, wait for the next setup.</li>
+    <li>Best hours: the first 90 minutes after the open.</li>
+   </ol>
+  </div>
+ </section>
+</main>
+
+<section class="band" id="learn"><details class="learnbox"><summary>Learn: how it works and what everything means</summary>
+ <div class="learn" style="margin-top:14px">
+  <div class="card"><h2>How the app picks stocks</h2>
+   <ol class="steps">
+    <li><b>Finds the crowd:</b> scans the whole market for stocks up 8% or more, priced $1.50 to $25.</li>
+    <li><b>Checks Ross's 5 pillars:</b> price, % gain, relative volume, fresh news, small float.</li>
+    <li><b>Researches each one</b> across 4 sources: Alpaca (prices and news), Yahoo Finance (float, short interest, ownership, company), Finviz (backup float and more headlines) and SEC EDGAR (official filings that reveal share offerings).</li>
+    <li><b>Scores it out of 100</b> on 11 rules and finds the entry: a short, quiet pullback after a run, then a break above the pullback's high.</li>
+    <li><b>Maps the key levels</b> (high of day, pre-market high, yesterday's high, 52-week high, round numbers) to see where sellers will show up.</li>
+    <li><b>Filters out traps:</b> dilution news, offering prospectuses at the SEC, wide spreads, thin stocks, prices under VWAP, and stocks that already ran.</li>
+   </ol>
+  </div>
+  <div class="card"><h2>What each signal means</h2>
+   <table class="sigtab"><tbody>
+    <tr><td><span class="tag go" style="--c:var(--ok)">BUY NOW</span></td><td>It just broke out, the score is 85% or higher, and nothing blocks it.</td></tr>
+    <tr><td><span class="tag go" style="--c:var(--ok)">BUY SMALL</span></td><td>It broke out, but some rules are missing (70 to 84%). Use half size.</td></tr>
+    <tr><td><span class="tag" style="--c:var(--gold)">GET READY</span></td><td>A pullback has formed just under the trigger. Set an alert at the entry.</td></tr>
+    <tr><td><span class="tag" style="--c:var(--mute)">WATCH</span></td><td>It's moving but has no safe entry yet. The app tells you what it's waiting for.</td></tr>
+    <tr><td><span class="tag" style="--c:var(--bad)">TOO LATE</span></td><td>It ran past the entry. Chasing gives a bad reward for the risk.</td></tr>
+    <tr><td><span class="tag" style="--c:var(--bad)">SKIP</span></td><td>A trap: dilution, a wide spread, too few trades, or a low score.</td></tr>
+   </tbody></table>
+  </div>
+  <div class="card"><h2>Float and ownership, explained</h2>
+   <dl class="gl">
+    <dt>Float</dt><dd>Shares that can actually be traded (total shares minus those locked up by insiders). Under 10M is low: a small supply, so the price moves very fast.</dd>
+    <dt>Float rotation</dt><dd>Today's full-market volume ÷ the float. 1x means every tradable share changed hands today. Ross's biggest winners often rotate the float several times.</dd>
+    <dt>Short % of float</dt><dd>Shares borrowed and sold by traders betting the price will fall. Above 15%, a strong rise can force them to buy back (a short squeeze).</dd>
+    <dt>Days to cover</dt><dd>How many days of normal volume shorts would need to buy back. Higher means more squeeze fuel.</dd>
+    <dt>Institutions / insiders</dt><dd>Big funds holding a lot makes a stock calmer. Low institutional ownership means retail traders drive it, so it's wilder.</dd>
+   </dl>
+  </div>
+  <div class="card"><h2>SEC filings, explained</h2>
+   <dl class="gl">
+    <dt>424B (prospectus)</dt><dd>Shares are being sold now. This is the clearest dilution signal, so the app blocks the trade for 10 days.</dd>
+    <dt>S-1 / S-3 / F-1 / F-3</dt><dd>The company registered shares it can sell later (a "shelf"). Rallies often get sold into.</dd>
+    <dt>EFFECT</dt><dd>The SEC approved a registration: the company can now sell shares at any time.</dd>
+    <dt>8-K / 6-K</dt><dd>A material event (deal, results, management change). It often explains the move.</dd>
+    <dt>NT 10-Q / NT 10-K</dt><dd>The company is late with its financial report: a warning sign.</dd>
+    <dt>Form 4</dt><dd>An insider bought or sold shares.</dd>
+   </dl>
+  </div>
+ </div>
+</details></section>
+<p class="band foot">Education only, not financial advice. The app gives rule-based ideas and doesn't place trades; a signal doesn't guarantee a win. Practise in a simulator first. Sources: Alpaca (IEX feed, a sample of the market), Yahoo Finance, Finviz, SEC EDGAR.</p>
+<script>{
+const $=id=>document.getElementById(id),usd=v=>v==null?'-':(v<0?'-$':'$')+Math.abs(Number(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const big=v=>v==null?'unknown':v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':String(Math.round(v));
+const ld=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},sv=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+let data=null,sel=null,alertsOn=ld('ms_alerts','0')==='1',ctx=null,omsg='',whyOpen=false,lastTk='',lastMood='',lastAl='';const alerted={};
+const hm=ms=>new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}),day=ms=>new Date(ms).toDateString()===new Date().toDateString()?'':new Date(ms).toLocaleDateString([],{weekday:'long'})+' ';
+const dur=ms=>{ms=Math.max(0,ms);const h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),s=Math.floor(ms%60000/1000);return h?h+'h '+m+'m':m?m+'m '+s+'s':s+'s'};
+const ago=t=>{const d=(Date.now()-new Date(t).getTime())/60000;if(!t||isNaN(d))return'';return d<60?Math.max(1,Math.round(d))+' min ago':d<1440?Math.round(d/60)+' h ago':Math.round(d/1440)+' d ago'};
+const cur=()=>data&&data.stocks.find(s=>s.sym===sel);
+const CLS={'BUY NOW':'go','BUY SMALL':'go','GET READY':'ready','WATCH':'idle','TOO LATE':'late','SKIP':'late'},VAR={go:'ok',ready:'gold',late:'bad',idle:'mute'};
+const maxp=s=>s.max_price||(s.entry+Math.max(.03,.25*(s.entry-s.stop)));
+const riskCfg=()=>{const st=(data&&data.settings)||{},a=parseFloat(ld('ms_acct',''))||st.account||0,r=parseFloat(ld('ms_risk',''))||st.risk_pct||1;return{a,r,usd:a*r/100}};
+const sizeOf=s=>{const c=riskCfg(),per=s.entry-s.stop;if(!c.a||!(per>0))return null;let sh=Math.floor(Math.min(c.usd/per,c.a/maxp(s)));if(s.signal==='BUY SMALL')sh=Math.floor(sh/2);return sh>0?{sh,risk:sh*per,gain:sh*(s.target-s.entry),cost:sh*maxp(s)}:null};
+const ICON=k=>`<i class="ic ${k==='good'||k===true?'ok':k==='bad'||k===false?'bad':'warn'}">${k==='good'||k===true?'✓':k==='bad'||k===false?'✗':k===null?'?':'!'}</i>`;
+const WHY={'Price $2-20':'Cheap enough to move a lot in % terms, expensive enough to avoid the worst junk.','Up 10%+ today':'Already moving big today. Strong stocks keep moving while the crowd is there.','Relative volume':'How much busier than normal it is at this time of day. 5x+ means many traders are watching.','Low float':'Few shares available, so buying pressure moves the price faster.','News catalyst':'A real reason for the move keeps buyers interested. Offering/dilution news is a red flag.','Above VWAP':'Above the average price paid today: buyers are in control.','Above 9 EMA':'The very short-term trend is up.','MACD positive':'Momentum is pointing up.','Valid setup + tight stop':'A clean pause with a nearby stop means a small, clearly defined risk.','Tight spread':'A small bid/ask gap means you lose less getting in and out.','Volume confirmation':'Quiet volume during the pause, then a surge on the breakout, is the healthy pattern.'};
+const FORM={'8-K':'Material event (deal, results, change)','6-K':'Foreign company report or news','10-Q':'Quarterly financial report','10-K':'Annual report','4':'Insider bought or sold shares','3':'New insider registered','EFFECT':'Registration approved: can sell shares now','DEF 14A':'Shareholder vote (check for a reverse split)','PRE 14A':'Upcoming shareholder vote','SC 13G':'An investor owns 5%+','SC 13D':'Activist investor owns 5%+','S-8':'Shares for employees (small dilution)'};
+const formMeaning=f=>f.startsWith('424B')?'Prospectus: shares being SOLD (dilution)':/^(S-1|S-3|F-1|F-3)/.test(f)?'Registered shares to sell (shelf/offering)':f.startsWith('NT ')?'Late financial report (warning)':FORM[f]||FORM[f.split('/')[0]]||'Other filing';
+const formTone=f=>f.startsWith('424B')||f==='EFFECT'?'bad':/^(S-1|S-3|F-1|F-3|NT )/.test(f)?'warn':/^(8-K|6-K)$/.test(f)?'good':'';
+
+function tone(f,n,gap){if(!alertsOn||!ctx)return;for(let i=0;i<n;i++){const d=i*gap,o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=f;o.connect(g);g.connect(ctx.destination);g.gain.setValueAtTime(.2,ctx.currentTime+d);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+d+.2);o.start(ctx.currentTime+d);o.stop(ctx.currentTime+d+.22)}}
+function say(t){if(!alertsOn)return;try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t))}catch(e){}}
+function notify(t,b){if(!alertsOn)return;try{if('Notification' in window&&Notification.permission==='granted')new Notification(t,{body:b})}catch(e){}}
+function setAlertBtn(){$('snd').textContent=alertsOn?'Browser alerts on':'Turn on browser alerts'}
+$('snd').addEventListener('click',()=>{try{ctx=ctx||new (window.AudioContext||window.webkitAudioContext)()}catch(e){}alertsOn=!alertsOn;sv('ms_alerts',alertsOn?'1':'0');setAlertBtn();
+ if(alertsOn){try{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission()}catch(e){}tone(880,1,0);say('Alerts are on')}});
+document.addEventListener('click',()=>{if(alertsOn&&!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}},{once:true});
+setAlertBtn();
+const spell=s=>s.split('').join(' ');
+function checkAlerts(){if(!data)return;data.stocks.forEach(s=>{const k=s.sym+s.trigger;
+ if((s.signal==='BUY NOW'||s.signal==='BUY SMALL')&&alerted[k]!=='buy'){alerted[k]='buy';tone(880,3,.25);say((s.signal==='BUY SMALL'?'Buy small, ':'Buy ')+spell(s.sym)+' now');notify(s.signal+' '+s.sym,'Entry '+usd(s.entry)+' (max '+usd(maxp(s))+'), stop '+usd(s.stop)+', target '+usd(s.target)+(sizeOf(s)?', '+sizeOf(s).sh+' shares':''));document.title=s.signal+' '+s.sym;setTimeout(()=>document.title='Momentum Desk',15000)}
+ else if(s.signal==='GET READY'&&!alerted[k]){alerted[k]='ready';tone(523,1,0);say('Get ready, '+spell(s.sym));notify('GET READY '+s.sym,'Set an alert at '+usd(s.entry))}})}
+
+function chart(s){const svg=$('ch');if(!svg)return;const W=svg.clientWidth,H=svg.clientHeight,C=s.candles||[];if(!W||C.length<2){svg.innerHTML='';return}
+ const act=/BUY|READY/.test(s.signal);
+ const lv=[['Entry',act&&s.entry,'#c9a45c'],['Stop',act&&s.stop,'#d9645a'],['Target',act&&s.target,'#5fd0a0'],['High of day',s.hod,'#e6cf9a']];
+ if(s.next_res&&s.next_res.label!=='High of day')lv.push([s.next_res.label,s.next_res.price,'#b98a8a']);
+ let lo=Math.min(...C.map(c=>c[3])),hi=Math.max(...C.map(c=>c[2]));
+ lv.forEach(l=>{if(l[1]&&l[1]<hi*1.25&&l[1]>lo*.8){lo=Math.min(lo,l[1]);hi=Math.max(hi,l[1])}});
+ const pad=(hi-lo||1)*.06;lo-=pad;hi+=pad;
+ const R=W<560?6:126,PH=H*.76,VH=H*.17,n=C.length,cw=(W-R-8)/n,x=i=>8+cw*(i+.5),y=v=>6+(PH-12)*(hi-v)/(hi-lo),vmax=Math.max(...C.map(c=>c[5]))||1;
+ let g='';
+ for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4;g+=`<line x1="8" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,255,255,.05)"/>`}
+ C.forEach((c,i)=>{const up=c[4]>=c[1],col=up?'#5fd0a0':'#d9645a',bw=Math.max(1,cw*.64),vh=VH*c[5]/vmax;
+  g+=`<line x1="${x(i)}" x2="${x(i)}" y1="${y(c[2])}" y2="${y(c[3])}" stroke="${col}"/><rect x="${x(i)-bw/2}" y="${Math.min(y(c[1]),y(c[4]))}" width="${bw}" height="${Math.max(1,Math.abs(y(c[1])-y(c[4])))}" fill="${col}"/><rect x="${x(i)-bw/2}" y="${H-14-vh}" width="${bw}" height="${vh}" fill="${col}" opacity=".35"/>`});
+ const line=(a,col,dash)=>`<polyline points="${a.map((v,i)=>v==null?'':x(i).toFixed(1)+','+y(v).toFixed(1)).filter(Boolean).join(' ')}" fill="none" stroke="${col}" stroke-width="1.7" ${dash?'stroke-dasharray="3 3"':''}/>`;
+ g+=line(s.vwap_s||[],'#a78bfa')+line(s.ema_s||[],'#e6cf9a',1);
+ const vis=lv.filter(l=>l[1]&&l[1]>=lo&&l[1]<=hi).map(l=>({l,ly:y(l[1])})).sort((a,b)=>a.ly-b.ly);
+ for(let i=1;i<vis.length;i++)if(vis[i].ly-vis[i-1].ly<14)vis[i].ly=vis[i-1].ly+14;   // keep labels from overlapping
+ vis.forEach(({l,ly})=>{g+=`<line x1="8" x2="${W-R+4}" y1="${y(l[1])}" y2="${y(l[1])}" stroke="${l[2]}" stroke-dasharray="5 5" opacity=".85"/>`+(W>=560?`<text x="${W-R+10}" y="${ly+4}" font-size="12" fill="${l[2]}">${l[0]} ${usd(l[1])}</text>`:'')});
+ [0,Math.floor(n/2),n-1].forEach(i=>{g+=`<text x="${x(i)}" y="${H-1}" font-size="11" fill="#8d887b" text-anchor="middle">${hm(C[i][0])}</text>`});
+ svg.innerHTML=g}
+
+function story(s){const P=[],f=s.fund||{};
+ let a=`<b>${esc(s.sym)}</b>${f.name?' ('+esc(f.name)+')':''} is ${s.chg>=0?'up':'down'} ${Math.abs(s.chg)}% today at ${usd(s.price)}. `;
+ a+=s.rvol>=5?`It's trading ${s.rvol>100?'over 100':s.rvol}x its normal volume for this time of day, so a big crowd is watching it.`:s.rvol>=2?`Volume is ${s.rvol}x normal: some interest, not a frenzy.`:`Volume is only ${s.rvol}x normal, so there's no real crowd yet.`;P.push(a);
+ const rn=s.news.find(n=>n.t&&Date.now()-new Date(n.t)<18*36e5),n=rn?'"'+esc(rn.h)+'"':'';
+ P.push(s.news_kind==='strong'?`The reason: ${n}. That's a real catalyst.`:s.news_kind==='weak'?`News: ${n}. Not a strong reason for the move.`:s.news_kind==='dilution'?`<span class="bad">Warning: ${n}. The company is selling shares, which usually sinks the price.</span>`:'No news in the last 18 hours, so the move has no clear reason.');
+ if(s.float_m!=null)P.push(`Float: ${s.float_m.toFixed(2)}M shares${s.float_m<10?' (low): it can move fast.':s.float_m<20?' (medium).':' (large): it moves slower.'}${s.rotation?` The float has rotated ${s.rotation}x today.`:''}`);
+ if(s.note)P.push(esc(s.note));
+ if(s.next_res)P.push(`Next resistance: <b>${esc(s.next_res.label)} ${usd(s.next_res.price)}</b> (${s.next_res.dist>0?'+':''}${s.next_res.dist}%).${s.next_sup?` Nearest support: <b>${esc(s.next_sup.label)} ${usd(s.next_sup.price)}</b> (${s.next_sup.dist}%).`:''}`);
+ return '<div class="story">'+P.map(p=>'<p>'+p+'</p>').join('')+'</div>'}
+
+function todo(s){const L=[],z=s.entry?sizeOf(s):null,szt=z?` (${z.sh.toLocaleString()} shares)`:'';
+ if(s.halted)L.push(`<span class="bad">No trades for ${Math.round(s.idle_min)} minutes: it may be halted. Don't place orders until it trades normally again.</span>`);
+ const missing=s.rules.filter(r=>r[1]===0&&!(r[0]==='Above VWAP'&&s.vwap&&s.price<s.vwap)).map(r=>r[0].toLowerCase());
+ if(s.signal==='GET READY'){L.push(`Set a price alert in your broker at <b>${usd(s.entry)}</b>.`);L.push(`Buy${szt} only if it trades above ${usd(s.entry)} with strong volume. Use a buy stop-limit order: stop ${usd(s.entry)}, limit ${usd(maxp(s))}. Never pay more than ${usd(maxp(s))}.`);L.push(`Right after you buy, place a stop-loss at <b>${usd(s.stop)}</b>.`);L.push(`Sell at <b>${usd(s.target)}</b>${s.res_above&&s.res_above.price<s.target?`, or sell half at ${esc(s.res_above.label.toLowerCase())} ${usd(s.res_above.price)} and move your stop up to ${usd(s.entry)}`:' (or sell half there and move your stop up to the entry)'}.`);L.push(`If it drops below ${usd(s.stop)} before breaking out, cancel the plan. The setup is broken.`)}
+ else if(s.signal==='BUY NOW'||s.signal==='BUY SMALL'){L.push(`It just broke out. Buy${szt} now with a <b>limit order, max ${usd(maxp(s))}</b>.${s.signal==='BUY SMALL'?' Half size: some rules are missing or resistance is close.':''}`);L.push(`Place a stop-loss at <b>${usd(s.stop)}</b> right away.`);L.push(`Sell at <b>${usd(s.target)}</b>, or sell half there and move your stop to ${usd(s.entry)}.`);L.push(`If the price is already above ${usd(maxp(s))}, don't buy. It's too late.`)}
+ else if(s.signal==='TOO LATE'){L.push('Do nothing. It already ran past the entry, so the possible gain is too small for the risk.');L.push(`Wait for a new pause${s.vwap?' that holds above VWAP '+usd(s.vwap):''}. The app will alert you.`)}
+ else if(s.signal==='SKIP'){L.push('Avoid this stock.');L.push('Why: '+esc(s.blocks.filter(b=>!/window/.test(b)).join(', ')||'the score is too low (under 70%)')+'.')}
+ else{L.push('Do nothing yet. It is moving but there is no safe entry.');
+  L.push(s.vwap&&s.price<s.vwap?`First, it needs to climb back above VWAP (${usd(s.vwap)}).`:'It needs a short pause (1 to 6 quiet candles) that holds most of the run, then a break above the top of the pause.');
+  if(missing.length)L.push('Also missing: '+esc(missing.slice(0,4).join(', '))+'.');
+  L.push('The app will switch it to GET READY and alert you if that happens.')}
+ if(data.mood&&data.mood.tone==='bad'&&/BUY|READY/.test(s.signal))L.push('<span class="warn">The overall market is weak today. Use half size and take profits early.</span>');
+ if(!data.window_open)L.push(`<span class="warn">The best trading window is ${hm(data.win_start)} to ${hm(data.win_end)} your time. Outside it, moves are weaker.</span>`);
+ return '<ol class="todo">'+L.map(x=>'<li>'+x+'</li>').join('')+'</ol>'}
+
+function scen(s){if(!s.entry||!/BUY|READY/.test(s.signal))return'';
+ const r=s.next_res&&s.next_res.price>s.entry?s.next_res:null;
+ return`<div class="scen"><div style="--c:var(--ok)"><b>IF IT BREAKS OUT</b>Above ${usd(s.entry)} with a volume surge: buyers win. ${r?`First stop is ${esc(r.label.toLowerCase())} at ${usd(r.price)}, then the target ${usd(s.target)}.`:`Room to run to ${usd(s.target)}.`}</div>
+ <div style="--c:var(--bad)"><b>IF IT FAILS</b>Drops under ${usd(s.stop)}${s.vwap?` or loses VWAP ${usd(s.vwap)}`:''}: sellers win. Exit or don't enter. A small loss is part of the plan.</div>
+ <div style="--c:var(--gold)"><b>SKIP IT IF</b>It gaps above ${usd(maxp(s))}, the breakout comes on low volume, or bad news appears (an offering).</div></div>`}
+
+function fundCard(s){const f=s.fund||{};if(!f.loaded)return'<p class="mute">Loading float, short interest and ownership from Yahoo Finance and Finviz...</p>';
+ const fl=f.float,sp=f.short_pct,src=k=>f[k+'_src']?`<span class="src">${esc(f[k+'_src'])}</span>`:'';
+ const c=(lab,val,expl,cls)=>`<div><span>${lab}</span><b class="${cls||''}">${val}</b><small>${expl}</small></div>`;
+ return`<div class="cells">${c('FLOAT '+src('float'),fl?big(fl):'unknown',fl?(fl<10e6?'Low: moves very fast':fl<20e6?'Medium':'Large: moves slower'):'Not reported by the sources',fl&&fl<10e6?'ok':'')}
+ ${c('FLOAT ROTATION',s.rotation!=null?s.rotation+'x':'-',s.rotation!=null?(s.rotation>=1?'Every share traded today: extreme demand':'Today\'s volume ÷ float'):'Shown during market hours',s.rotation>=1?'ok':'')}
+ ${c('SHORT % OF FLOAT '+src('short_pct'),sp!=null?sp.toFixed(1)+'%':'unknown',sp!=null?(sp>=15?'High: squeeze fuel':'Normal'):'',sp>=15?'ok':'')}
+ ${c('DAYS TO COVER',f.short_ratio!=null?f.short_ratio.toFixed(1):'-','Days for shorts to buy back')}
+ ${c('SHARES OUTSTANDING',big(f.shares),'All shares, including locked ones')}
+ ${c('MARKET CAP',f.mcap?'$'+big(f.mcap):'-',f.mcap&&f.mcap<50e6?'Micro-cap: very volatile':'Company value')}
+ ${c('INSTITUTIONS OWN',f.inst_pct!=null?f.inst_pct.toFixed(1)+'%':'-',f.inst_pct!=null&&f.inst_pct<10?'Low: retail-driven, wilder':'Big funds')}
+ ${c('INSIDERS OWN',f.insider_pct!=null?f.insider_pct.toFixed(1)+'%':'-','Management and founders')}</div>
+ <p class="mute" style="margin:10px 0 0">Sources: ${esc((f.sources||[]).join(', ')||'none')}${s.fullvol?` · Full-market volume today: ${big(s.fullvol)} shares`:''}${f.hi52?` · 52-week range ${usd(f.lo52)} to ${usd(f.hi52)}`:''}</p>`}
+
+function levelsCard(s){if(!s.levels||!s.levels.length)return'';const rows=[];let placed=false;
+ s.levels.forEach(l=>{if(!placed&&l.price<s.price){rows.push(`<tr class="now"><td>▶ Price now</td><td class="n">${usd(s.price)}</td><td class="n">0%</td><td class="hide-s">You are here</td></tr>`);placed=true}
+  rows.push(`<tr><td class="${l.side}">${esc(l.label)}</td><td class="n">${usd(l.price)}</td><td class="n ${l.side}">${l.dist>0?'+':''}${l.dist}%</td><td class="mute hide-s">${esc(l.why)}</td></tr>`)});
+ if(!placed)rows.push(`<tr class="now"><td>▶ Price now</td><td class="n">${usd(s.price)}</td><td class="n">0%</td><td class="hide-s">You are here</td></tr>`);
+ return`<h3>Key price levels</h3><p class="expl">Red levels above the price are <b>resistance</b> (sellers may show up there). Green levels below are <b>support</b> (buyers may defend them).</p><table class="lv"><thead><tr><th>LEVEL</th><th class="n">PRICE</th><th class="n">DISTANCE</th><th class="hide-s">WHY IT MATTERS</th></tr></thead><tbody>${rows.join('')}</tbody></table>`}
+
+function secCard(s){const f=s.fund||{};if(!f.loaded)return'';const L=s.sec||[];
+ return`<h3>SEC filings (last 120 days)</h3><p class="expl">Official documents the company must file. They often reveal share sales (dilution) before the news does.</p>
+ ${(s.sec_flags||[]).map(x=>`<p style="margin:6px 0">${ICON(x[0])} <b>${esc(x[1])}.</b> ${esc(x[2]||'')}</p>`).join('')}
+ ${L.length?`<table><thead><tr><th>DATE</th><th>FORM</th><th>WHAT IT MEANS</th></tr></thead><tbody>${L.map(x=>`<tr><td style="white-space:nowrap">${esc(x.date)}</td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:inherit">${esc(x.form)}</a>`:esc(x.form)}</td><td class="${formTone(x.form)}">${esc(formMeaning(x.form))}</td></tr>`).join('')}</tbody></table>`:'<p class="mute">No recent filings found (or not listed at the SEC).</p>'}`}
+
+function tally(s){const n=k=>s.tips.filter(t=>t[0]===k).length,b=n('bad');return`<div class="tally"><span class="ok">✓ ${n('good')} in your favor</span><span class="warn">! ${n('warn')} be careful</span><span class="${b?'bad':'mute'}">✗ ${b} deal-breaker${b===1?'':'s'}</span></div>`}
+function ticket(s){
+ if(!s)return'<h2>No stocks yet</h2><p class="mute">Nothing meets the rules right now. The app checks every few seconds and the banner tells you when something shows up.</p>';
+ const sig=s.signal,cls=CLS[sig],f=s.fund||{};
+ const sub=[f.sector,f.industry,f.country,f.mcap?'$'+big(f.mcap)+' market cap':null].filter(Boolean).map(esc).join(' · ');
+ let plan='';
+ if(s.entry&&/BUY|READY/.test(sig)){const per=s.entry-s.stop;
+  plan=`<h3>The plan</h3><p class="expl">Exact prices for this trade. The stop is where you're proven wrong. The target is twice the risk.</p><div class="cells"><div><span>BUY ABOVE</span><b>${usd(s.entry)}</b><small>max ${usd(maxp(s))}</small></div><div><span>STOP (SELL IF)</span><b>${usd(s.stop)}</b><small>risk ${usd(per)} / share</small></div><div><span>TARGET</span><b>${usd(s.target)}</b><small>gain ${usd(s.target-s.entry)} / share</small></div><div><span>REWARD : RISK</span><b>${s.rr}:1</b><small>${s.rr>=2?'good':'ok'}</small></div></div>
+  ${(()=>{const z=sizeOf(s);return z?`<div class="size">Buy <b>${z.sh.toLocaleString()} shares</b>${s.signal==='BUY SMALL'?' (half size)':''}: you lose about <b class="bad">${usd(z.risk)}</b> if stopped, make about <b class="ok">${usd(z.gain)}</b> at the target. Cost up to ${usd(z.cost)}.</div>`:`<p class="mute" style="margin:10px 0 0">Enter your account size in <b>Your risk</b> to get an exact share count. Example: 100 shares risks ${usd(per*100)} to make ${usd((s.target-s.entry)*100)}.</p>`})()}
+  <div class="btns"><button data-o="copy">Copy plan</button></div>${omsg?`<p class="omsg ok">${esc(omsg)}</p>`:''}`}
+ const pil=`<h3>Ross's 5 pillars</h3><p class="expl">The 5 things the best momentum stocks have in common. The more ✓, the better.</p><div class="pillars">${s.pillars.map(p=>`<div>${ICON(p[1])}<b>${esc(p[2])}</b><span>${esc(p[0])}</span></div>`).join('')}</div>`;
+ const grp=(k,lab,cls)=>{const L=s.tips.filter(t=>t[0]===k);return L.length?`<div class="tipgrp"><b class="${cls}">${lab} (${L.length})</b><ul class="tips">${L.map(t=>`<li>${ICON(t[0])}<span><b>${esc(t[1])}</b><small>${esc(t[2]||'')}</small></span></li>`).join('')}</ul></div>`:''};
+ const tips=s.tips.length?`<h3>Smart tips</h3><p class="expl">What an experienced trader would point out right now, most important first.</p>${grp('bad','DEAL-BREAKERS','bad')}${grp('good','IN YOUR FAVOR','ok')}${grp('warn','BE CAREFUL','warn')}`:'';
+ const news=`<h3>News</h3><p class="expl">Headlines from Benzinga (via Alpaca) and Finviz. Fresh, specific news (FDA, contracts, earnings) is the best fuel.</p>`+(s.news.length?'<ul class="news">'+s.news.map(n=>`<li>${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.h)}</a>`:esc(n.h)} <span class="src">${esc(n.src||'')}${n.t?' · '+ago(n.t):''}</span></li>`).join('')+'</ul>':'<p class="mute">No headlines found.</p>');
+ const co=f.summary?`<h3>The company</h3><p style="font-size:14px;color:#d8d2c3;margin:6px 0">${esc(f.summary)}${f.summary.length>=700?'...':''}</p><p class="mute">${[f.employees?f.employees.toLocaleString()+' employees':null,f.earnings?'Next earnings: '+f.earnings:null].filter(Boolean).map(esc).join(' · ')}${f.website?` · <a href="${esc(f.website)}" target="_blank" rel="noopener" style="color:var(--gold2)">website</a>`:''}</p>`:'';
+ return `<div class="hero"><div><div class="eyebrow">${esc(s.setup||'NO SETUP YET').toUpperCase()}</div><div class="tk">${esc(s.sym)}</div>${f.name?`<div class="co">${esc(f.name)}</div>`:''}${sub?`<div class="mute">${sub}</div>`:''}<div class="sig ${cls}">${esc(sig)}</div></div><div class="ring ${cls}" style="--p:${s.score}"><b>${s.score}</b><small>GRADE ${s.grade}</small></div></div>
+ ${tally(s)}<h3 style="border:0;padding-top:0">What to do</h3>${todo(s)}${scen(s)}
+ ${plan}
+ <h3>Chart (1-minute candles)</h3><div class="fig" aria-label="1-minute candlestick chart with VWAP, 9 EMA, volume and key levels"><svg id="ch"></svg></div>
+ <div class="legend"><span><i style="background:#5fd0a0"></i>up candle</span><span><i style="background:#d9645a"></i>down candle</span><span><i style="background:#a78bfa"></i>VWAP</span><span><i style="background:#e6cf9a"></i>9 EMA (dotted)</span><span>bars at the bottom = volume</span></div>
+ ${pil}
+ <h3>Why this stock</h3>${story(s)}
+ ${tips}
+ <h3>Float &amp; ownership</h3><p class="expl">How many shares can trade and who holds them. This decides how fast and how violently it can move.</p>${fundCard(s)}
+ ${levelsCard(s)}
+ ${secCard(s)}
+ ${news}
+ ${co}
+ <details id="why" ${whyOpen?'open':''}><summary>Why ${s.score}%? See every scoring rule</summary><ul class="rules">${s.rules.map(r=>`<li><div class="top"><span>${esc(r[0])} <span class="mute">· ${esc(r[3])}</span></span><span class="pts ${r[1]===r[2]?'ok':r[1]>0?'warn':'bad'}">${r[1]===r[2]?'✓':r[1]>0?'½':'✗'} ${r[1]}/${r[2]}</span></div><div class="why">${esc(WHY[r[0]]||'')}</div></li>`).join('')}</ul>
+ <p class="mute" style="margin-top:10px">85% or more with a breakout = BUY NOW. 70 to 84% = BUY SMALL. Below 70% = SKIP.</p></details>`}
+
+function mood(){const m=data.mood;if(!m)return'<h2>Market mood</h2><p class="mute">Not available yet.</p>';
+ return`<h2>Market mood</h2><p class="${m.tone==='good'?'ok':m.tone==='bad'?'bad':'warn'}" style="margin:0">${esc(m.text)}</p><div class="mood">${(m.items||[]).map(i=>`<span>${esc(i[0])}<b class="${i[1]>=0?'ok':'bad'}">${i[1]>0?'+':''}${i[1]}%</b>${i[2]?'above VWAP':'below VWAP'}</span>`).join('')}</div>
+ <p class="mute" style="margin:10px 0 0">SPY = the 500 biggest US companies, QQQ = tech, IWM = small companies (the closest match to the stocks this app picks).</p>`}
+
+function banner(){if(!data)return;const L=data.stocks,now=Date.now();
+ const buyS=L.find(s=>s.signal==='BUY NOW'||s.signal==='BUY SMALL'),rdy=L.find(s=>s.signal==='GET READY'),best=L.find(s=>s.signal==='WATCH'&&s.score>=55);
+ let big_,sub,c='var(--mute)';
+ if(buyS){big_='BUY '+buyS.sym+' NOW';sub=(buyS.signal==='BUY SMALL'?'Half size. ':'')+'Score '+buyS.score+'%. Limit order, max '+usd(maxp(buyS))+'. Stop '+usd(buyS.stop)+', target '+usd(buyS.target)+'. Full steps below.';c='var(--ok)'}
+ else if(rdy){big_='GET READY: '+rdy.sym;sub='Score '+rdy.score+'%. Set an alert at '+usd(rdy.entry)+'. Buy only if it breaks above, stop '+usd(rdy.stop)+', target '+usd(rdy.target)+'.';c='var(--gold)'}
+ else if(!data.window_open){big_='WINDOW CLOSED: NO TRADING';sub='The best window is '+day(data.win_start)+hm(data.win_start)+' to '+hm(data.win_end)+' your time. Open the app 30 minutes early, turn on alerts, and study the top stocks below.'+(best?' Stock to watch: '+best.sym+'.':'')}
+ else if(best){big_='WATCH '+best.sym;sub='Strongest stock right now ('+best.score+'%) but no safe entry yet. Waiting for a pullback and a break. You\'ll get an alert.';c='var(--gold2)'}
+ else{big_='WAIT';sub='No stock meets the rules right now. No setup = no trade. You\'ll get an alert when something appears.'}
+ $('act').style.setProperty('--c',c);$('actBig').textContent=big_;$('actSub').textContent=sub;
+ $('clk').innerHTML=data.window_open?`<small>WINDOW CLOSES IN</small>${dur(data.win_end-now)}`:`<small>WINDOW OPENS ${day(data.win_start).toUpperCase()}${hm(data.win_start)} IN</small>${dur(data.win_start-now)}`}
+
+function draw(){
+ if(!data)return;
+ const demo=data.mode==='DEMO';
+ $('mode').textContent=demo?'DEMO · fake data':'LIVE DATA · 4 SOURCES';$('mode').className='pill live'+(demo?' off':'');
+ $('sess').textContent=data.session||'-';
+ $('win').textContent=(data.window_open?'Window open · ':'Window · ')+hm(data.win_start)+'-'+hm(data.win_end)+' your time';$('win').className='pill'+(data.window_open?'':' off');
+ $('meta').textContent=data.updated?'Updated '+data.updated+' · refreshes by itself':'Connecting...';
+ let em=data.error||'';if(/HTTP (401|403)/.test(em))em+=' (check your API key and secret)';
+ $('err').hidden=!em;$('err').textContent=em?'Data error: '+em:'';
+ const list=data.stocks;if(!list.find(s=>s.sym===sel))sel=list[0]&&list[0].sym;
+ $('empty').hidden=list.length>0;
+ $('rows').innerHTML=list.map(s=>{const c=CLS[s.signal];return`<tr class="row ${s.sym===sel?'sel':''}" data-s="${esc(s.sym)}"><td><span class="sym">${esc(s.sym)}</span><span class="rw">${esc(s.why)}</span></td><td><span class="tag ${c}" style="--c:var(--${VAR[c]})">${esc(s.signal)}</span></td><td class="n">${s.score}%</td><td class="n">${usd(s.price)}</td><td class="n">${s.chg}%</td><td class="n hide-s">${s.float_m==null?(s.fund&&s.fund.loaded?'?':'...'):s.float_m.toFixed(1)+'M'}</td></tr>`}).join('');
+ banner();const html=ticket(cur());if(html!==lastTk){lastTk=html;$('tk').innerHTML=html;const c=cur();if(c)chart(c)}
+ const mh=mood();if(mh!==lastMood){lastMood=mh;$('moodCard').innerHTML=mh}
+ const nf=data.notify||{},ch=nf.channels||[];$('push').textContent=ch.length?'Phone alerts · '+ch.join(' + '):'Phone alerts off';$('push').className='pill'+(ch.length&&!nf.error?' live':' off');$('push').title=nf.error?'Last send failed: '+nf.error:'Phone notifications sent by the server';
+ const al=data.alerts||[],ah='<h2>Recent alerts</h2>'+(al.length?'<ul class="al">'+al.slice(0,10).map(a=>`<li><time>${esc(a.t)}</time><b>${esc(a.title)}</b>${a.kind==='market'?'':'<br><span class="mute">'+esc((a.body||'').split(String.fromCharCode(10))[1]||'')+'</span>'}</li>`).join('')+'</ul>':'<p class="mute">None yet today. '+(ch.length?'They also go to your phone.':'Set up phone alerts: see README.md.')+'</p>');
+ if(ah!==lastAl){lastAl=ah;$('alCard').innerHTML=ah}
+ const c=riskCfg();$('riskTxt').innerHTML=c.a?`Max loss per trade: <b>${usd(c.usd)}</b>. After 3 losses in a row (${usd(c.usd*3)}), stop for the day.`:'Not set: share counts are hidden.'}
+
+$('rows').addEventListener('click',e=>{const r=e.target.closest('tr.row');if(r){sel=r.dataset.s;omsg='';draw();$('tk').scrollIntoView({behavior:'smooth',block:'start'})}});
+window.addEventListener('resize',()=>{const c=cur();if(c)chart(c)});
+document.addEventListener('toggle',e=>{if(e.target.id==='why')whyOpen=e.target.open},true);
+setInterval(banner,1000);
+$('acct').value=ld('ms_acct','');$('riskp').value=ld('ms_risk','');
+['acct','riskp'].forEach(id=>$(id).addEventListener('input',()=>{sv(id==='acct'?'ms_acct':'ms_risk',$(id).value);lastTk='';draw()}));
+document.addEventListener('click',async e=>{const b=e.target.closest('button[data-o="copy"]');if(!b)return;const s=cur();if(!s||!s.entry)return;
+ const t=`${s.sym}: buy above ${s.entry.toFixed(2)} (max ${maxp(s).toFixed(2)}), stop loss ${s.stop.toFixed(2)}, target ${s.target.toFixed(2)}`;
+ try{await navigator.clipboard.writeText(t);omsg='Copied: '+t}catch(x){omsg=t}draw()});
+async function poll(){try{const r=await fetch('/api/scan',{cache:'no-store'});if(!r.ok)throw new Error(r.status);data=await r.json();checkAlerts();draw()}catch(e){$('err').hidden=false;$('err').textContent='Lost connection to the scanner. Retrying every 3 seconds... (on your PC: is the START.bat window still open?)'}}
+poll();setInterval(poll,3000);
+}</script>
+</body>
+</html>

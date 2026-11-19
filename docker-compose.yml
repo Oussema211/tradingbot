@@ -1,0 +1,16 @@
+services:
+  momentum-desk:
+    build: .
+    container_name: momentum-desk
+    restart: unless-stopped        # starts again after a crash or a server reboot
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/data               # signals log + alert history survive updates
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

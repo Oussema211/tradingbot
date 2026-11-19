@@ -1,0 +1,2 @@
+# Only the standard library is used. tzdata supplies time zones on systems without them (Windows, slim Docker images).
+tzdata>=2024.1

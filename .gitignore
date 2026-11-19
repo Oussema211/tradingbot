@@ -1,0 +1,7 @@
+.env
+data/
+__pycache__/
+*.pyc
+signals_log*.csv
+alert_state.json*
+old_versions/

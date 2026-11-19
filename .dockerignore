@@ -1,0 +1,8 @@
+.env
+.git
+data/
+old_versions/
+__pycache__/
+*.csv
+alert_state.json*
+*.bat

@@ -1,0 +1,21 @@
+# systemd service: keeps Momentum Desk running on a Linux server without Docker.
+#   sudo cp deploy/momentum-desk.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now momentum-desk
+#   journalctl -u momentum-desk -f        # live logs
+[Unit]
+Description=Momentum Desk scanner and alerts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=desk
+WorkingDirectory=/opt/momentum-desk
+Environment=HEADLESS=1
+ExecStart=/usr/bin/python3 /opt/momentum-desk/momentum_scanner.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

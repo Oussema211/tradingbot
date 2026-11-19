@@ -1,0 +1,46 @@
+# Free option: GitHub runs the scanner every weekday morning and sends alerts to your phone.
+# (No dashboard in this mode, only notifications.) Setup: README.md > "Free option 2: GitHub Actions".
+name: Momentum Desk morning scan
+
+on:
+  schedule:
+    # 12:20 UTC = 08:20 New York in summer, 07:20 in winter. GitHub can start scheduled jobs a few minutes late.
+    - cron: "20 12 * * 1-5"
+  workflow_dispatch: {}      # "Run workflow" button for a manual test
+
+concurrency:
+  group: momentum-desk
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Scan until 11:05 New York time
+        env:
+          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ACCOUNT_SIZE: ${{ vars.ACCOUNT_SIZE || '0' }}
+          RISK_PCT: ${{ vars.RISK_PCT || '1' }}
+          HEADLESS: "1"
+          RUN_UNTIL: "11:05"
+          DATA_DIR: data
+        run: python momentum_scanner.py
+      - name: Keep the signals log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-${{ github.run_id }}
+          path: data/
+          if-no-files-found: ignore
+          retention-days: 30
