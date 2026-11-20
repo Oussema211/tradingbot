@@ -645,21 +645,19 @@ def analyze(inp, now, window_open, mood=None):
             sig, reason = "NO TRADE", "outside the trading window"
         elif must_fail:
             sig, reason = "NO TRADE", "failed: " + must_fail[0].lower()
-        elif len(soft_fail) <= 1:
+        elif len(soft_fail) <= (0 if hs and hs["n"] >= 8 and hs["r"] <= 0 else 1):
             sig = "BUY NOW"
-        elif len(soft_fail) <= (1 if hs and hs["n"] >= 8 and hs["r"] <= 0 else 3):
-            sig = "BUY HALF"
         else:
-            sig, reason = "NO TRADE", "too weak: missing " + ", ".join(x.lower() for x in soft_fail[:3])
+            sig, reason = "NO TRADE", "not strong enough: missing " + ", ".join(x.lower() for x in soft_fail[:3])
     elif state == "ARMED":
         if real_blocks:
             sig, reason = "NO TRADE", real_blocks[0]
-        elif window_open and not must_pre and len(soft_fail) <= 3:
+        elif window_open and not must_pre and len(soft_fail) <= 1:
             sig = "GET READY"
         else:
             sig = "WAIT"
-            reason = ("waiting for: " + must_pre[0].lower()) if must_pre else "too weak: missing " + ", ".join(x.lower() for x in soft_fail[:3]) \
-                if len(soft_fail) > 3 else "outside the trading window"
+            reason = ("waiting for: " + must_pre[0].lower()) if must_pre else "not strong enough: missing " + ", ".join(x.lower() for x in soft_fail[:3]) \
+                if len(soft_fail) > 1 else "outside the trading window"
     elif state == "LATE" and not real_blocks:
         sig, reason = "TOO LATE", "it already ran past the entry"
     else:
@@ -954,10 +952,9 @@ def action_line(sig, reason, entry, stop, target, max_price, tr, p):
         return "Trade done at %s: %s. Result: %s. Wait for a new setup." % (u(tr["exit"]), tr["why"], res)
     if sig in ("BUY NOW", "BUY HALF"):
         t1 = entry + (entry - stop)
-        return "%s: limit order, never pay above %s. Stop-loss %s. Sell half at %s, rest at %s." % (
-            "BUY NOW" if sig == "BUY NOW" else "BUY HALF SIZE", u(max_price), u(stop), u(t1), u(target))
+        return "BUY NOW: limit order, never pay above %s. Stop-loss %s. Sell half at %s, rest at %s." % (u(max_price), u(stop), u(t1), u(target))
     if sig == "GET READY":
-        return "DON'T BUY YET. Buy only if it breaks %s on strong volume (max %s). Stop %s, target %s." % (u(entry), u(max_price), u(stop), u(target))
+        return "DON'T BUY YET. Wait for the BUY alert (it comes only if it breaks %s the right way)." % u(entry)
     if sig == "TOO LATE":
         return "DON'T CHASE. It ran past the entry. Wait for the next pullback."
     if sig == "NO TRADE":

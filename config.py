@@ -81,7 +81,7 @@ NTFY_TOPIC = env("NTFY_TOPIC")
 NTFY_SERVER = env("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
 NTFY_TOKEN = env("NTFY_TOKEN")
 DISCORD_WEBHOOK = env("DISCORD_WEBHOOK_URL")
-ALERT_LEVEL = env("ALERT_LEVEL", "ready").lower()  # ready = GET READY + BUY, buy = only BUY signals
+ALERT_LEVEL = env("ALERT_LEVEL", "buy").lower()  # ready = GET READY + BUY, buy = only BUY signals
 ALERT_MIN_SCORE = int(env_float("ALERT_MIN_SCORE", 60))
 ALERT_MARKET_EVENTS = env_bool("ALERT_MARKET_EVENTS", True)
 PUBLIC_URL = env("PUBLIC_URL").rstrip("/")         # e.g. https://desk.example.com, added as a link in alerts

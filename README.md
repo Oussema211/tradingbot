@@ -48,7 +48,7 @@ Server settings → Integrations → Webhooks → New webhook → Copy URL → `
 | Problems | Scanner hasn't had data for 5+ minutes / recovered |
 
 There's no spam: a GET READY must hold for 2 scans in a row, each setup is sent once, and nothing is re-sent after a restart.
-Set `ALERT_LEVEL=buy` to get BUY signals only. Set `ACCOUNT_SIZE` and `RISK_PCT` to get exact share counts in alerts.
+By default you only get BUY alerts and their follow-ups (SELL HALF, EXIT NOW, TARGET HIT). Set `ALERT_LEVEL=ready` to also get GET READY heads-ups.
 
 ---
 

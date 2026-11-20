@@ -348,11 +348,6 @@ class AlertManager:
         L = [s.get("action") or ""]
         L.append("Entry %s (max %s) · Stop %s · Half at %s · Target %s" % (
             usd(s["entry"]), usd(s["max_price"]), usd(s["stop"]), usd(s["entry"] + (s["entry"] - s["stop"])), usd(s["target"])))
-        sp = share_plan(s)
-        if sp:
-            if s["signal"] == "BUY HALF":
-                sp = dict(shares=sp["shares"] // 2, risk=sp["risk"] / 2)
-            L.append("Size: %d shares (you lose %s if stopped)" % (sp["shares"], usd(sp["risk"])))
         L.append("Checks passed: %d/%d · %s" % (s.get("passed", 0), s.get("total", 0), s["why"]))
         miss = [c[0] for c in s.get("checks", []) if not c[1] and not c[2]]
         if miss:

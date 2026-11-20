@@ -113,17 +113,13 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
    <p class="mute" id="empty" hidden>No stock matches right now. That's normal: no setup, no trade.</p>
    <p class="mute" style="margin:12px 0 0">Ranked best first. Click a stock for the full analysis.</p>
   </div>
-  <div class="card"><h2>Your risk</h2><p class="expl">Used to tell you exactly how many shares to buy. Saved in this browser only.</p>
-   <div class="form"><label>ACCOUNT SIZE ($)<input id="acct" type="number" min="0" step="100" inputmode="decimal" placeholder="e.g. 5000"></label>
-   <label>RISK PER TRADE (%)<input id="riskp" type="number" min="0.1" max="5" step="0.1" inputmode="decimal" placeholder="1"></label></div>
-   <p class="mute" id="riskTxt" style="margin:10px 0 0"></p></div>
   <div class="card" id="sbCard"><h2>Today's scoreboard</h2><p class="mute">No trades called yet today.</p></div>
   <div class="card" id="moodCard"><h2>Market mood</h2><p class="mute">Loading...</p></div>
   <div class="card" id="alCard"><h2>Recent alerts</h2><p class="mute">None yet today.</p></div>
   <div class="card"><h2>Golden rules</h2>
    <ol class="steps">
     <li>Decide your stop <b>before</b> you buy, and never move it lower.</li>
-    <li>Risk the same small amount on every trade (about 1% of your account).</li>
+    <li>Only buy on BUY NOW. GET READY is not a buy.</li>
     <li>Stop for the day after 3 losses in a row. Never try to "win it back".</li>
     <li>Don't chase. If you missed the entry, wait for the next setup.</li>
     <li>Best hours: the first 90 minutes after the open.</li>
@@ -147,12 +143,11 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
   </div>
   <div class="card"><h2>What each signal means</h2>
    <table class="sigtab"><tbody>
-    <tr><td><span class="tag go" style="--c:var(--ok)">BUY NOW</span></td><td>It broke out and passed every MUST check, with at most 1 other missing. Full size.</td></tr>
-    <tr><td><span class="tag go" style="--c:var(--ok)">BUY HALF</span></td><td>Broke out, every MUST check passed, but 2-3 others are missing. Half size.</td></tr>
+    <tr><td><span class="tag go" style="--c:var(--ok)">BUY NOW</span></td><td>It broke out the right way and passed every MUST check, with at most 1 other missing. The only time to buy.</td></tr>
     <tr><td><span class="tag go" style="--c:var(--ok)">HOLD</span></td><td>You're in. The plan is frozen: same stop, same target. Do nothing.</td></tr>
     <tr><td><span class="tag go" style="--c:var(--ok)">SELL HALF</span></td><td>It reached +1R. Sell half and move your stop to your entry price: the trade can't lose anymore.</td></tr>
     <tr><td><span class="tag" style="--c:var(--bad)">EXIT NOW</span></td><td>Stop hit, lost VWAP, or no follow-through in 10 minutes. Sell everything. Small loss, as planned.</td></tr>
-    <tr><td><span class="tag" style="--c:var(--gold)">GET READY</span></td><td>A pullback is set up just under the trigger and everything else passes. Wait for the break.</td></tr>
+    <tr><td><span class="tag" style="--c:var(--gold)">GET READY</span></td><td>Heads-up only. Don't buy. If it breaks out the right way, you get BUY NOW.</td></tr>
     <tr><td><span class="tag" style="--c:var(--mute)">WAIT</span></td><td>No safe entry yet. The row tells you what it's waiting for.</td></tr>
     <tr><td><span class="tag" style="--c:var(--bad)">TOO LATE</span></td><td>It ran past the entry. Don't chase.</td></tr>
     <tr><td><span class="tag" style="--c:var(--bad)">NO TRADE</span></td><td>A MUST check failed (dilution, below VWAP, weak volume, no room, daily loss limit...). Don't buy.</td></tr>
@@ -194,7 +189,7 @@ const CLS={'BUY NOW':'go','BUY HALF':'go','SELL HALF':'go','HOLD':'go','GET READ
 const half=s=>s.signal==='BUY HALF'||(s.trade&&s.trade.size==='half');
 const maxp=s=>s.max_price||(s.entry+Math.max(.03,.25*(s.entry-s.stop)));
 const riskCfg=()=>{const st=(data&&data.settings)||{},a=parseFloat(ld('ms_acct',''))||st.account||0,r=parseFloat(ld('ms_risk',''))||st.risk_pct||1;return{a,r,usd:a*r/100}};
-const sizeOf=s=>{const c=riskCfg(),per=s.entry-s.stop;if(!c.a||!(per>0))return null;let sh=Math.floor(Math.min(c.usd/per,c.a/maxp(s)));if(half(s))sh=Math.floor(sh/2);return sh>0?{sh,risk:sh*per,gain:sh*(s.target-s.entry),cost:sh*maxp(s)}:null};
+const sizeOf=s=>null,_sizeOf=s=>{const c=riskCfg(),per=s.entry-s.stop;if(!c.a||!(per>0))return null;let sh=Math.floor(Math.min(c.usd/per,c.a/maxp(s)));if(half(s))sh=Math.floor(sh/2);return sh>0?{sh,risk:sh*per,gain:sh*(s.target-s.entry),cost:sh*maxp(s)}:null};
 const ICON=k=>`<i class="ic ${k==='good'||k===true?'ok':k==='bad'||k===false?'bad':'warn'}">${k==='good'||k===true?'✓':k==='bad'||k===false?'✗':k===null?'?':'!'}</i>`;
 const WHY={'Price $2-20':'Cheap enough to move a lot in % terms, expensive enough to avoid the worst junk.','Up 10%+ today':'Already moving big today. Strong stocks keep moving while the crowd is there.','Relative volume':'How much busier than normal it is at this time of day. 5x+ means many traders are watching.','Low float':'Few shares available, so buying pressure moves the price faster.','News catalyst':'A real reason for the move keeps buyers interested. Offering/dilution news is a red flag.','Above VWAP':'Above the average price paid today: buyers are in control.','Above 9 EMA':'The very short-term trend is up.','MACD positive':'Momentum is pointing up.','Valid setup + tight stop':'A clean pause with a nearby stop means a small, clearly defined risk.','Tight spread':'A small bid/ask gap means you lose less getting in and out.','Volume confirmation':'Quiet volume during the pause, then a surge on the breakout, is the healthy pattern.'};
 const FORM={'8-K':'Material event (deal, results, change)','6-K':'Foreign company report or news','10-Q':'Quarterly financial report','10-K':'Annual report','4':'Insider bought or sold shares','3':'New insider registered','EFFECT':'Registration approved: can sell shares now','DEF 14A':'Shareholder vote (check for a reverse split)','PRE 14A':'Upcoming shareholder vote','SC 13G':'An investor owns 5%+','SC 13D':'Activist investor owns 5%+','S-8':'Shares for employees (small dilution)'};
@@ -256,7 +251,7 @@ function todo(s){const z=s.entry?sizeOf(s):null,c=CLS[s.signal],L=[];
  if(data.mood&&data.mood.tone==='bad'&&/BUY|READY/.test(s.signal))L.push('<span class="warn">Weak market today: take profits early.</span>');
  return `<div class="verdict" style="--c:var(--${VAR[c]})">${head}<small>Checks passed: ${s.passed}/${s.total}${s.trade?' · trade opened '+esc(s.trade.opened_ny)+' NY at '+usd(s.trade.entry):''}</small></div>`+(L.length?'<ol class="todo">'+L.map(x=>'<li>'+x+'</li>').join('')+'</ol>':'')}
 
-function checks(s){return`<h3>The checklist</h3><p class="expl">Every <span class="must">MUST</span> item has to pass, or the answer is NO TRADE. 0-1 others missing = full size, 2-3 = half size.</p>
+function checks(s){return`<h3>The checklist</h3><p class="expl">Every <span class="must">MUST</span> item has to pass, and at most 1 other can be missing. Otherwise: NO TRADE.</p>
  <ul class="ck">${(s.checks||[]).map(c=>`<li>${ICON(c[1])}<span>${esc(c[0])}${c[2]?'<span class="must">MUST</span>':''}</span><small>${esc(c[3])}</small></li>`).join('')}</ul>`}
 
 function scoreboard(){const t=data.trades;if(!t||!t.list||!t.list.length)return'<h2>Today\'s scoreboard</h2><p class="mute">No trades called yet today. Every BUY the app calls is tracked here to the exit, wins and losses.</p>';
@@ -304,7 +299,6 @@ function ticket(s){
  let plan='';
  if(s.entry&&/^(BUY|GET)/.test(sig)){const per=s.entry-s.stop;
   plan=`<h3>The plan</h3><p class="expl">Exact prices for this trade. The stop is where you're proven wrong. The target is twice the risk.</p><div class="cells"><div><span>BUY ABOVE</span><b>${usd(s.entry)}</b><small>max ${usd(maxp(s))}</small></div><div><span>STOP-LOSS</span><b>${usd(s.stop)}</b><small>risk ${usd(per)} / share</small></div><div><span>TARGET</span><b>${usd(s.target)}</b><small>gain ${usd(s.target-s.entry)} / share</small></div><div><span>REWARD : RISK</span><b>${s.rr}:1</b><small>half at ${usd(s.entry+per)}</small></div></div>
-  ${(()=>{const z=sizeOf(s);return z?`<div class="size">Buy <b>${z.sh.toLocaleString()} shares</b>${half(s)?' (half size)':''}: you lose about <b class="bad">${usd(z.risk)}</b> if stopped, make about <b class="ok">${usd(z.gain)}</b> at the target. Cost up to ${usd(z.cost)}.</div>`:`<p class="mute" style="margin:10px 0 0">Enter your account size in <b>Your risk</b> to get an exact share count. Example: 100 shares risks ${usd(per*100)} to make ${usd((s.target-s.entry)*100)}.</p>`})()}
   <div class="btns"><button data-o="copy">Copy plan</button></div>${omsg?`<p class="omsg ok">${esc(omsg)}</p>`:''}`}
  const pil=`<h3>Ross's 5 pillars</h3><p class="expl">The 5 things the best momentum stocks have in common. The more ✓, the better.</p><div class="pillars">${s.pillars.map(p=>`<div>${ICON(p[1])}<b>${esc(p[2])}</b><span>${esc(p[0])}</span></div>`).join('')}</div>`;
  const grp=(k,lab,cls)=>{const L=s.tips.filter(t=>t[0]===k);return L.length?`<div class="tipgrp"><b class="${cls}">${lab} (${L.length})</b><ul class="tips">${L.map(t=>`<li>${ICON(t[0])}<span><b>${esc(t[1])}</b><small>${esc(t[2]||'')}</small></span></li>`).join('')}</ul></div>`:''};
@@ -365,14 +359,12 @@ function draw(){
  const nf=data.notify||{},ch=nf.channels||[];$('push').textContent=ch.length?'Phone alerts · '+ch.join(' + '):'Phone alerts off';$('push').className='pill'+(ch.length&&!nf.error?' live':' off');$('push').title=nf.error?'Last send failed: '+nf.error:'Phone notifications sent by the server';
  const al=data.alerts||[],ah='<h2>Recent alerts</h2>'+(al.length?'<ul class="al">'+al.slice(0,10).map(a=>`<li><time>${esc(a.t)}</time><b>${esc(a.title)}</b>${a.kind==='market'?'':'<br><span class="mute">'+esc((a.body||'').split(String.fromCharCode(10))[1]||'')+'</span>'}</li>`).join('')+'</ul>':'<p class="mute">None yet today. '+(ch.length?'They also go to your phone.':'Set up phone alerts: see README.md.')+'</p>');
  if(ah!==lastAl){lastAl=ah;$('alCard').innerHTML=ah}
- const c=riskCfg();$('riskTxt').innerHTML=c.a?`Max loss per trade: <b>${usd(c.usd)}</b>. After 3 losses in a row (${usd(c.usd*3)}), stop for the day.`:'Not set: share counts are hidden.'}
+}
 
 $('rows').addEventListener('click',e=>{const r=e.target.closest('tr.row');if(r){sel=r.dataset.s;omsg='';draw();$('tk').scrollIntoView({behavior:'smooth',block:'start'})}});
 window.addEventListener('resize',()=>{const c=cur();if(c)chart(c)});
 document.addEventListener('toggle',e=>{if(e.target.id==='why')whyOpen=e.target.open},true);
 setInterval(banner,1000);
-$('acct').value=ld('ms_acct','');$('riskp').value=ld('ms_risk','');
-['acct','riskp'].forEach(id=>$(id).addEventListener('input',()=>{sv(id==='acct'?'ms_acct':'ms_risk',$(id).value);lastTk='';draw()}));
 document.addEventListener('click',async e=>{const b=e.target.closest('button[data-o="copy"]');if(!b)return;const s=cur();if(!s||!s.entry)return;
  const t=`${s.sym}: buy above ${s.entry.toFixed(2)} (max ${maxp(s).toFixed(2)}), stop loss ${s.stop.toFixed(2)}, target ${s.target.toFixed(2)}`;
  try{await navigator.clipboard.writeText(t);omsg='Copied: '+t}catch(x){omsg=t}draw()});
