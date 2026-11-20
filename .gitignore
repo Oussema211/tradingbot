@@ -5,3 +5,5 @@ __pycache__/
 signals_log*.csv
 alert_state.json*
 old_versions/
+trades_state.json*
+trades_log.csv

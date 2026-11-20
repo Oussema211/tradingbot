@@ -94,9 +94,9 @@ No Docker? Use `deploy/momentum-desk.service` (instructions inside the file).
 GitHub starts the scanner every weekday at 07:20/08:20 New York time (depending on daylight saving). It runs until 11:05, sends all the alerts, then stops.
 1. Create a free GitHub account. Make a **public** repository (public repos get unlimited free minutes; your keys stay secret, see step 3) and upload: `config.py`, `notifier.py`, `momentum_scanner.py`, `web/`, `requirements.txt`, `.github/workflows/scanner.yml`. **Never upload `.env`.**
 2. *(A private repo also works, but the free 2,000 minutes a month run out after about 10 trading days.)*
-3. Repository → Settings → Secrets and variables → Actions → **New repository secret**. Add `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` and your alert settings (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`, or `NTFY_TOPIC`). Optionally, under the **Variables** tab, add `ACCOUNT_SIZE` and `RISK_PCT`.
+3. Repository → Settings → Secrets and variables → Actions → **New repository secret**. Add `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` and your alert settings (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`, or `NTFY_TOPIC`). Optionally add `ACCOUNT_SIZE` as a secret too (for share counts; a secret keeps it out of the public logs), and `RISK_PCT` under the **Variables** tab.
 4. Actions tab → "Momentum Desk morning scan" → **Run workflow** to test. You should get "Momentum Desk is online".
-Notes: GitHub sometimes starts scheduled jobs 5 to 15 minutes late, which is fine since the trading window starts later. The day's signals log is saved under each run's **Artifacts**.
+Notes: GitHub sometimes starts scheduled jobs 5 to 15 minutes late, which is fine since the trading window starts later. A backup start at 13:05 UTC covers a dropped job. Trade results and today's alert state are kept between runs in the Actions cache, so the scanner learns which setups win. To check Telegram from GitHub: Actions → Momentum Desk morning scan → Run workflow → tick "Only send a test Telegram message".
 
 ### Option C: Your own PC
 Double-click **INSTALL_AUTOSTART.bat**. The app runs silently in the background from then on and starts again every time you log in. Logs go to `desk.log`.

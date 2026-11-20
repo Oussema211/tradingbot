@@ -374,7 +374,8 @@ def detect(bars, p, now):
 
 # ---------------------------------------------------------------- analysis
 STATE = {}
-ORDER = {"BUY NOW": 0, "BUY SMALL": 1, "GET READY": 2, "WATCH": 3, "TOO LATE": 3, "SKIP": 4}
+ORDER = {"EXIT NOW": 0, "SELL HALF": 0, "BUY NOW": 1, "BUY HALF": 2, "HOLD": 3, "GET READY": 4, "WAIT": 5, "TOO LATE": 6,
+         "CLOSED": 7, "NO TRADE": 8}
 STRONG = ("fda", "approval", "approved", "phase", "trial", "merger", "acquisition", "acquire", "contract", "partnership", "agreement",
           "earnings", "revenue", "guidance", "patent", "clearance", "designation", "award", "launch", "breakthrough", "upgrade", "buyout", "collaboration")
 DILUTION = ("offering", "registered direct", "private placement", "reverse split", "shelf", "dilution", "warrants", "at-the-market", "atm program", "convertible")
@@ -406,7 +407,7 @@ def merged_news(inp, now):
     recent = [n for n in allv if ts(n) and now.timestamp() - ts(n) <= 18 * 3600]
     return allv[:10], recent
 
-def analyze(inp, now, window_open):
+def analyze(inp, now, window_open, mood=None):
     s, bars, p = inp["sym"], inp["bars"], inp["price"]
     fund = inp.get("fund") or {}
     chg = (p / inp["prev_close"] - 1) * 100 if inp["prev_close"] else 0
@@ -431,8 +432,10 @@ def analyze(inp, now, window_open):
     st = STATE.get(s)
     state, plan = "WATCH", None
     if det:
-        STATE[s] = dict(det, since=time.time())
-        state, plan = "ARMED", det
+        # count how many scans in a row the SAME pattern (same trigger) is seen: one-scan flickers are not setups
+        same = st and "fired" not in st and abs(st["trigger"] - det["trigger"]) / det["trigger"] < 0.01
+        STATE[s] = dict(det, since=st["since"] if same else time.time(), seen=st.get("seen", 1) + 1 if same else 1)
+        state, plan = "ARMED", STATE[s]
     elif st:
         if p < st["stop"] or time.time() - st["since"] > 1800:
             STATE.pop(s, None)
@@ -445,6 +448,10 @@ def analyze(inp, now, window_open):
     entry = stop = target = max_price = None
     if plan:
         entry, stop = round(plan["trigger"] + 0.02, 2), round(plan["stop"] - 0.02, 2)
+        rng = [b["h"] - b["l"] for b in bars[-11:-1]]
+        atr1 = sum(rng) / len(rng) if rng else 0
+        if atr1 and entry - stop < atr1:
+            stop = round(entry - atr1, 2)      # a stop inside the normal wiggle gets hit by noise, not by a real failure
         if entry - stop >= 0.03:
             target = round(entry + 2 * (entry - stop), 2)
             # never chase: the highest price still worth paying (a quarter of the risk above the entry)
@@ -530,19 +537,6 @@ def analyze(inp, now, window_open):
         blocks.append("too few trades on the data feed today (thin stock)")
     if halted:
         blocks.append("no trades for %d minutes (possibly halted)" % idle)
-    below_vwap = bool(vw and p < vw)
-    if below_vwap and state in ("ARMED", "TRIGGERED"):
-        blocks.append("below VWAP (sellers in control)")
-        sig = "WATCH"
-    elif state == "TRIGGERED":
-        sig = "BUY NOW" if score >= 85 and not blocks else "BUY SMALL" if score >= 70 and not blocks else "SKIP"
-    elif state == "ARMED":
-        sig = "SKIP" if [x for x in blocks if "window" not in x] else "GET READY" if score >= 60 else "WATCH"
-    elif state == "LATE":
-        sig = "TOO LATE"
-    else:
-        sig = "WATCH"
-
     # ---- key price levels: where buyers and sellers are likely to show up
     hod = max(b["h"] for b in bars) if bars else p
     pm = [b["h"] for b in bars if parse_t(b["t"]).astimezone(NY).time() < dtime(9, 30)]
@@ -580,13 +574,110 @@ def analyze(inp, now, window_open):
         above = [x for x in levels if x["price"] > entry * 1.004 and x["label"] != "Round number"]
         res_above = min(above, key=lambda x: x["price"]) if above else None
     room_r = round((res_above["price"] - entry) / (entry - stop), 1) if res_above and entry and stop and entry > stop else None
-    if sig == "BUY NOW" and room_r is not None and room_r < 0.75:
-        sig = "BUY SMALL"            # breaking out straight into resistance: smaller size
 
     # ---- float rotation (full-market volume from Yahoo / float)
     yq = inp.get("yq") or {}
     fullvol = yq.get("vol") if yq.get("day") == now.date().isoformat() else None
     rotation = round(fullvol / fund["float"], 2) if fullvol and fund.get("float") else None
+
+    # ---- THE DECISION: a strict checklist. Every MUST item has to pass, or there is no trade.
+    ext = (p / vw - 1) * 100 if vw else None
+    stable = bool(plan) and plan.get("seen", 1) >= 2
+    bvol = bool(plan and plan.get("pullv") and len(bars) >= 2 and max(bars[-1]["v"], bars[-2]["v"]) >= 1.5 * plan["pullv"])
+    late_morning = m >= 630 and not DEMO
+    # buying pressure: volume on green candles vs red candles over the last 10 minutes
+    up = sum(b["v"] for b in bars[-10:] if b["c"] >= b["o"]); dn = sum(b["v"] for b in bars[-10:] if b["c"] < b["o"])
+    press = None if len(bars) < 10 else (up / dn if dn else 9.9)
+    # higher timeframe: 5-minute closes above their own 9 EMA
+    c5 = [bars[i]["c"] for i in range(len(bars) - 1, -1, -5)][::-1]
+    tf5 = None if len(c5) < 6 else bool(c5[-1] > ema(c5, 9)[-1])
+    # breakout candle: price must hold near the top of the candle, not spike and get slammed (an upper wick = trap)
+    lb = bars[-1] if bars else None
+    hold_ok = True
+    if state == "TRIGGERED" and lb and lb["h"] > lb["l"] and lb["h"] >= (plan or {}).get("trigger", 1e9):
+        hold_ok = (lb["h"] - p) <= 0.5 * (lb["h"] - lb["l"])
+    CK = []
+    def ck(name, ok, must, detail):
+        CK.append([name, bool(ok), must, detail])
+    ck("Volume 3x+ normal", rvol >= 3, True, "%.1fx" % rvol)
+    ck("Above VWAP", vw and p > vw, True, "VWAP $%.2f" % vw if vw else "n/a")
+    ck("No offering / dilution", kind != "dilution" and not off, True, "dilution news" if kind == "dilution" else "SEC offering filed" if off else "clean")
+    ck("Clean pullback pattern", stable, True, (plan["setup"] if stable else "forming...") if plan else "none yet")
+    ck("Tight stop (8% or less)", plan and risk_pct <= 8, True, "%.1f%%" % risk_pct if plan else "no stop yet")
+    ck("Room to run (1R+ to resistance)", room_r is None or room_r >= 1, True,
+       "%s %.1fR away" % (res_above["label"], room_r) if room_r is not None else "clear")
+    ck("Breakout on a volume surge", bvol, True, "yes" if bvol else "checked at the breakout")
+    ck("Up 10%+ today", chg >= 10, False, "%+.1f%%" % chg)
+    ck("Real news catalyst", kind == "strong", False, {"strong": "strong", "weak": "weak news", "dilution": "dilution", "none": "no news"}[kind])
+    ck("Low float (under 20M)", fl is not None and fl < 20, False, "unknown" if fl is None else "%.1fM" % fl)
+    ck("Trend up (9 EMA + MACD)", e9 and p > e9 and mac, False, "yes" if e9 and p > e9 and mac else "no")
+    ck("Quiet pullback volume", plan and plan.get("lightvol"), False, "light" if plan and plan.get("lightvol") else "heavy" if plan else "n/a")
+    ck("Not stretched (<20% over VWAP)", ext is None or ext <= 20, False, "n/a" if ext is None else "%+.0f%% vs VWAP" % ext)
+    ck("Market not weak", (mood or {}).get("tone") != "bad", False, (mood or {}).get("tone") or "unknown")
+    ck("Prime time (before 10:30 NY)", not late_morning, False, now.strftime("%H:%M NY"))
+    ck("Buyers in control (last 10 min)", press is None or press >= 1.2, False, "n/a" if press is None else "%.1fx up vs down volume" % press)
+    ck("5-minute trend up", tf5 is not False, False, {True: "yes", False: "no", None: "not enough data"}[tf5])
+    ck("Breakout holding (no rejection wick)", hold_ok, True, "yes" if hold_ok else "sellers slammed the breakout")
+    hs = SETUP_HIST.get(plan["setup"]) if plan else None
+    if hs and hs["n"] >= 8:
+        ck("This setup has an edge (past results)", hs["r"] > 0, False, "%dW/%dL, %+.1fR over %d trades" % (hs["w"], hs["n"] - hs["w"], hs["r"], hs["n"]))
+    must_fail = [c[0] for c in CK if c[2] and not c[1]]
+    must_pre = [x for x in must_fail if x not in ("Breakout on a volume surge", "Breakout holding (no rejection wick)")]
+    soft_fail = [c[0] for c in CK if not c[2] and not c[1]]
+    passed = sum(1 for c in CK if c[1])
+
+    tl = trades_today(now)
+    lost_here = any(t["sym"] == s and t.get("closed") and t["r"] < 0 for t in tl)
+    n_here = sum(1 for t in tl if t["sym"] == s)
+    losses = sum(1 for t in tl if t.get("closed") and t["r"] < 0)
+    real_blocks = [b for b in blocks if "window" not in b]
+    if losses >= C.MAX_LOSSES:
+        real_blocks.append("%d losing trades today: daily limit reached, stop trading" % losses)
+    elif lost_here:
+        real_blocks.append("already lost on %s today: never revenge-trade the same stock" % s)
+    elif n_here >= C.MAX_TRADES_PER_STOCK:
+        real_blocks.append("already traded %s %d times today" % (s, n_here))
+    reason = None
+    if state == "TRIGGERED":
+        if real_blocks:
+            sig, reason = "NO TRADE", real_blocks[0]
+        elif not window_open:
+            sig, reason = "NO TRADE", "outside the trading window"
+        elif must_fail:
+            sig, reason = "NO TRADE", "failed: " + must_fail[0].lower()
+        elif len(soft_fail) <= 1:
+            sig = "BUY NOW"
+        elif len(soft_fail) <= (1 if hs and hs["n"] >= 8 and hs["r"] <= 0 else 3):
+            sig = "BUY HALF"
+        else:
+            sig, reason = "NO TRADE", "too weak: missing " + ", ".join(x.lower() for x in soft_fail[:3])
+    elif state == "ARMED":
+        if real_blocks:
+            sig, reason = "NO TRADE", real_blocks[0]
+        elif window_open and not must_pre and len(soft_fail) <= 3:
+            sig = "GET READY"
+        else:
+            sig = "WAIT"
+            reason = ("waiting for: " + must_pre[0].lower()) if must_pre else "too weak: missing " + ", ".join(x.lower() for x in soft_fail[:3]) \
+                if len(soft_fail) > 3 else "outside the trading window"
+    elif state == "LATE" and not real_blocks:
+        sig, reason = "TOO LATE", "it already ran past the entry"
+    else:
+        sig = "NO TRADE" if real_blocks else "WAIT"
+        reason = real_blocks[0] if real_blocks else ("waiting for: " + must_pre[0].lower()) if must_pre else "waiting for a clean pullback"
+    blocks = blocks + [b for b in real_blocks if b not in blocks]
+
+    # ---- trade lock: once a BUY is called, the plan is FROZEN and the app manages the trade (no flip-flopping)
+    tr = next((t for t in reversed(tl) if t["sym"] == s), None)
+    if tr and not tr.get("closed"):
+        manage_trade(tr, bars, p, vw, now)
+    elif sig in ("BUY NOW", "BUY HALF") and plan:
+        tr = open_trade(s, sig, entry, stop, max_price, p, now, plan["setup"])
+    since_close = now.timestamp() - tr["closed"] if tr and tr.get("closed") else None
+    if tr and (since_close is None or since_close < 180 or (since_close < 1800 and sig in ("WAIT", "NO TRADE", "TOO LATE"))):
+        entry, stop, target, max_price = tr["entry"], tr["stop"], tr["target"], tr["max_price"]
+        sig, reason = trade_signal(tr, now)
+    action = action_line(sig, reason, entry, stop, target, max_price, tr, p)
 
     # ---- tips: [tone, short title, one-line detail]. tone: bad = deal-breaker, good = in your favor, warn = be careful
     T = []
@@ -660,7 +751,8 @@ def analyze(inp, now, window_open):
     if 630 <= m < 660 and window_open:
         tip("warn", "Late morning", "After 10:30 New York time momentum usually fades. Be pickier.")
     T.sort(key=lambda t: {"bad": 0, "good": 1, "warn": 2}[t[0]])
-    rr = round((target - entry) / (entry - stop), 1) if plan and target else None
+    r0 = (tr["entry"] - tr["stop0"]) if tr and tr.get("stop0") is not None and entry == tr["entry"] else (entry - stop) if entry and stop else None
+    rr = round((target - entry) / r0, 1) if target and entry and r0 and r0 > 0 else None
 
     # ---- Ross's 5 pillars
     pillars = [["Price $2 to $20", 2 <= p <= 20, "$%.2f" % p, "Cheap enough to move fast in % terms."],
@@ -679,13 +771,14 @@ def analyze(inp, now, window_open):
     if plan: bits.append(plan["setup"].lower())
     if state == "LATE": bits.append("already ran")
     why = ", ".join(bits) or "moving, no clear edge yet"
-    real_blocks = [b for b in blocks if "window" not in b]
-    if sig == "SKIP" and real_blocks:
+    if sig == "NO TRADE" and real_blocks:
         why = "avoid: " + real_blocks[0]
 
     tail = bars[-60:]
     return dict(sym=s, price=round(p, 2), chg=round(chg, 1), rvol=round(rvol, 1), float_m=fl, spread=None if spread is None else round(spread, 2),
                 spread_iex=iex, vwap=vw and round(vw, 2), ema9=e9 and round(e9, 2), score=score, grade=grade, signal=sig, state=state,
+                action=action, reason=reason, checks=CK, passed=passed, total=len(CK),
+                trade=tr and {k: tr.get(k) for k in TRADE_PUBLIC},
                 setup=plan["setup"] if plan else None, note=plan.get("note") if plan else None,
                 trigger=plan and round(plan["trigger"], 2), entry=entry, stop=stop, target=target, max_price=max_price, blocks=blocks, rr=rr,
                 halted=halted, idle_min=None if idle is None else round(idle, 1), room_r=room_r, res_above=res_above,
@@ -714,6 +807,170 @@ def earnings_in_days(txt, today):
         except ValueError:
             continue
     return None
+
+# ---------------------------------------------------------------- trade manager
+# Once a BUY is called, its entry/stop/target are frozen and the app follows the trade to the exit:
+# HOLD -> SELL HALF at +1R (stop moves to breakeven) -> TARGET at +2R, or EXIT at the stop / on a failed breakout.
+# Every result is recorded, so the scoreboard shows the app's real hit rate (no hiding losers).
+TRADES = {"day": None, "list": []}
+TRADE_PUBLIC = ("id", "sym", "size", "setup", "opened_ny", "entry", "stop0", "stop", "t1", "target", "max_price",
+                "half", "half_price", "closed", "closed_ny", "exit", "result", "why", "r", "best")
+TLOCK = threading.RLock()
+
+SETUP_HIST = {}
+def load_setup_hist():
+    """Win/loss record per setup type from every past trade, so setups that keep losing get stricter rules."""
+    SETUP_HIST.clear()
+    try:
+        with open(C.TRADE_LOG, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                h = SETUP_HIST.setdefault(row["setup"], dict(n=0, w=0, r=0.0))
+                h["n"] += 1; h["w"] += row["result"] == "WIN"; h["r"] = round(h["r"] + float(row["R"] or 0), 2)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log.warning("could not read the trade log: %s", e)
+
+def trades_today(now):
+    with TLOCK:
+        d = now.date().isoformat()
+        if TRADES["day"] != d:
+            TRADES.update(day=d, list=[])
+            if not DEMO:
+                try:
+                    with open(C.TRADES_FILE, encoding="utf-8") as f:
+                        st = json.load(f)
+                    if st.get("day") == d:
+                        TRADES["list"] = st.get("list", [])
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    log.warning("could not read trades: %s", e)
+        return TRADES["list"]
+
+def _trades_save():
+    if DEMO:
+        return
+    try:
+        tmp = C.TRADES_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(TRADES, f)
+        os.replace(tmp, C.TRADES_FILE)
+    except Exception:
+        log.exception("could not save trades")
+
+def open_trade(sym, sig, entry, stop, max_price, p, now, setup):
+    fill = round(min(max(entry, p), max_price), 2)     # realistic fill: your limit order, never above the max price
+    risk = fill - stop
+    tr = dict(id="%s-%s" % (sym, now.strftime("%H%M%S")), sym=sym, size="half" if sig == "BUY HALF" else "full", setup=setup,
+              opened=now.timestamp(), opened_ny=now.strftime("%H:%M"), entry=fill, stop0=stop, stop=stop,
+              t1=round(fill + risk, 2), target=round(fill + 2 * risk, 2), max_price=max_price,
+              half=False, half_at=None, half_price=None, closed=None, closed_ny=None, exit=None, result=None, why=None, r=None, best=fill)
+    with TLOCK:
+        trades_today(now).append(tr)
+        _trades_save()
+    log.info("TRADE OPEN %s %s @ %.2f stop %.2f target %.2f", sym, tr["size"], fill, stop, tr["target"])
+    return tr
+
+def _close(tr, price, why, now):
+    risk = tr["entry"] - tr["stop0"]
+    move = (price - tr["entry"]) / risk if risk > 0 else 0
+    tr["r"] = round(0.5 * 1 + 0.5 * move if tr["half"] else move, 2)
+    tr.update(closed=now.timestamp(), closed_ny=now.strftime("%H:%M"), exit=round(price, 2), why=why,
+              result="WIN" if tr["r"] > 0.05 else "LOSS" if tr["r"] < -0.05 else "BREAKEVEN")
+    log.info("TRADE CLOSED %s %s %+.2fR (%s)", tr["sym"], tr["result"], tr["r"], why)
+    if DEMO:
+        return
+    try:
+        new = not os.path.exists(C.TRADE_LOG)
+        with open(C.TRADE_LOG, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if new:
+                w.writerow(["date", "symbol", "size", "setup", "opened", "entry", "stop", "target", "half_at_1R", "closed", "exit", "result", "R", "why"])
+            w.writerow([now.date(), tr["sym"], tr["size"], tr["setup"], tr["opened_ny"], tr["entry"], tr["stop0"], tr["target"],
+                        "yes" if tr["half"] else "no", tr["closed_ny"], tr["exit"], tr["result"], tr["r"], why])
+        load_setup_hist()
+    except Exception:
+        log.exception("could not write the trade log")
+
+def manage_trade(tr, bars, p, vw, now):
+    """Walk every candle since the entry (so a wick between two scans still counts), then the live price."""
+    if tr.get("closed"):
+        return
+    with TLOCK:
+        nowts = now.timestamp()
+        pts = []
+        for b in bars:
+            t = parse_t(b["t"]).timestamp()
+            if t >= tr["opened"] and not (tr["half"] and t < tr["half_at"]):
+                pts.append((t, b["h"], b["l"]))
+        pts.append((nowts, p, p))
+        changed = False
+        for t, h, l in pts:
+            tr["best"] = max(tr.get("best") or 0, h)
+            if l <= tr["stop"]:
+                _close(tr, tr["stop"], "back to entry after selling half" if tr["half"] else "stop-loss hit", now); changed = True
+                break
+            if h >= tr["target"]:
+                _close(tr, tr["target"], "target hit (+2R)", now); changed = True
+                break
+            if not tr["half"] and h >= tr["t1"]:
+                # later candles that started before this moment may contain older lows: ignore them for the new stop
+                tr.update(half=True, half_price=tr["t1"], half_at=nowts if t >= nowts else min(t + 60, nowts), stop=tr["entry"]); changed = True
+        if not tr.get("closed"):
+            age = nowts - tr["opened"]
+            if vw and p < vw and (tr["half"] or p < tr["entry"]):
+                _close(tr, p, "lost VWAP: sellers took control", now); changed = True
+            elif not tr["half"] and age >= 600 and p < tr["entry"]:
+                _close(tr, p, "no follow-through after 10 minutes", now); changed = True
+            elif not DEMO and now.time() >= dtime(15, 55):
+                _close(tr, p, "market closing", now); changed = True
+        if changed:
+            _trades_save()
+
+def trade_signal(tr, now):
+    nowts = now.timestamp()
+    if tr.get("closed"):
+        if nowts - tr["closed"] < 180 and "target" not in tr["why"]:
+            return "EXIT NOW", tr["why"]
+        return "CLOSED", tr["why"]
+    if tr["half"] and nowts - tr["half_at"] < 180:
+        return "SELL HALF", "hit +1R"
+    return "HOLD", None
+
+def action_line(sig, reason, entry, stop, target, max_price, tr, p):
+    """The one sentence that tells you exactly what to do."""
+    u = lambda v: "$%.2f" % v if v is not None else "-"
+    if tr and sig in ("HOLD", "SELL HALF", "EXIT NOW", "CLOSED"):
+        if sig == "SELL HALF":
+            return "SELL HALF now (about %s). Move your stop UP to %s (breakeven). Hold the rest for %s." % (u(tr["half_price"]), u(tr["entry"]), u(tr["target"]))
+        if sig == "HOLD":
+            if tr["half"]:
+                return "HOLD the rest. Stop is now %s (you can't lose on this trade). Sell the rest at %s." % (u(tr["stop"]), u(tr["target"]))
+            return "HOLD. Stop-loss %s. Sell half at %s, the rest at %s. Exit if it falls under VWAP." % (u(tr["stop"]), u(tr["t1"]), u(tr["target"]))
+        res = "%s %+.1fR" % (tr["result"], tr["r"])
+        if sig == "EXIT NOW":
+            return "SELL EVERYTHING NOW (about %s): %s. Result: %s." % (u(tr["exit"]), tr["why"], res)
+        return "Trade done at %s: %s. Result: %s. Wait for a new setup." % (u(tr["exit"]), tr["why"], res)
+    if sig in ("BUY NOW", "BUY HALF"):
+        t1 = entry + (entry - stop)
+        return "%s: limit order, never pay above %s. Stop-loss %s. Sell half at %s, rest at %s." % (
+            "BUY NOW" if sig == "BUY NOW" else "BUY HALF SIZE", u(max_price), u(stop), u(t1), u(target))
+    if sig == "GET READY":
+        return "DON'T BUY YET. Buy only if it breaks %s on strong volume (max %s). Stop %s, target %s." % (u(entry), u(max_price), u(stop), u(target))
+    if sig == "TOO LATE":
+        return "DON'T CHASE. It ran past the entry. Wait for the next pullback."
+    if sig == "NO TRADE":
+        return "DON'T BUY: %s." % (reason or "rules not met")
+    return "DON'T BUY YET: %s." % (reason or "no setup")
+
+def trade_summary(now):
+    tl = trades_today(now)
+    done = [t for t in tl if t.get("closed")]
+    w = sum(1 for t in done if t["result"] == "WIN")
+    l = sum(1 for t in done if t["result"] == "LOSS")
+    return dict(list=[{k: t.get(k) for k in TRADE_PUBLIC} for t in reversed(tl)], open=len(tl) - len(done), wins=w, losses=l,
+                be=len(done) - w - l, r=round(sum(t["r"] for t in done), 2), max_losses=C.MAX_LOSSES)
 
 # ---------------------------------------------------------------- live data (Alpaca)
 BARS, BARS_DAY, DAILY, DAYBARS, NEWS = {}, [None], {}, {}, [0, {}]
@@ -821,7 +1078,8 @@ def prev_close_of(sn, now):
 
 def fetch_live():
     now = datetime.now(NY)
-    syms = set(WATCH)
+    keep_syms = set(WATCH) | {t["sym"] for t in trades_today(now) if not t.get("closed")}
+    syms = set(keep_syms)
     mv = alp("/v1beta1/screener/stocks/movers", top=50)
     for g in mv.get("gainers", []):
         if 1.5 <= g.get("price", 0) <= 25 and g.get("percent_change", 0) >= 8:
@@ -831,7 +1089,7 @@ def fetch_live():
             syms.add(a["symbol"])
     except Exception:
         pass
-    syms = {s for s in syms if "." not in s or s in WATCH}
+    syms = {s for s in syms if "." not in s or s in keep_syms}
     if not syms:
         return []
     snaps = alp("/v2/stocks/snapshots", symbols=",".join(sorted(syms)[:100]), feed=FEED)
@@ -843,11 +1101,11 @@ def fetch_live():
             chg = (p / prev - 1) * 100
         except (KeyError, TypeError, ZeroDivisionError):
             continue
-        if 1.5 <= p <= 25 and (chg >= 8 or s in WATCH):
+        if (1.5 <= p <= 25 and chg >= 8) or s in keep_syms:
             cand.append((chg, s, sn, prev))
     keep = []
-    for c in sorted(cand, key=lambda c: -c[0]):
-        if c[1] in WATCH or not FUND_RX.search(asset_name(c[1])):
+    for c in sorted(cand, key=lambda c: (c[1] not in keep_syms, -c[0])):
+        if c[1] in keep_syms or not FUND_RX.search(asset_name(c[1])):
             keep.append(c)
         if len(keep) >= 15:
             break
@@ -873,7 +1131,7 @@ LOG_COLS = ["date", "time_ny", "symbol", "signal", "score", "grade", "setup", "p
             "rvol", "change_pct", "float_m", "news"]
 def log_signal(s, now):
     """Write each new buy/ready signal once to signals_log.csv, so you can review weeks of results later."""
-    if DEMO or s["signal"] not in ("BUY NOW", "BUY SMALL", "GET READY"):
+    if DEMO or s["signal"] not in ("BUY NOW", "BUY HALF", "GET READY"):
         return
     k = (now.date(), s["sym"], s["signal"], s["trigger"])
     if k in LOGGED:
@@ -978,7 +1236,7 @@ def market_mood():
 # ---------------------------------------------------------------- loop + server
 NOTIFIER = Notifier()
 ALERTS = AlertManager(NOTIFIER)
-RESULT = dict(stocks=[], error=None, updated=None, mode="DEMO" if DEMO else "LIVE", win_start=0, win_end=0, window_open=False,
+RESULT = dict(stocks=[], trades=None, error=None, updated=None, mode="DEMO" if DEMO else "LIVE", win_start=0, win_end=0, window_open=False,
               session="", feed="synthetic" if DEMO else FEED, mood=None, alerts=[], notify={},
               settings=dict(account=C.ACCOUNT_SIZE, risk_pct=C.RISK_PCT, iex=FEED == "iex"))
 LOCK = threading.Lock()
@@ -999,11 +1257,12 @@ def scan_loop():
                 mood = market_mood()
             except Exception:
                 mood = None
-            stocks = [analyze(i, now, ms["window_open"]) for i in (fetch_demo() if DEMO else fetch_live())]
+            stocks = [analyze(i, now, ms["window_open"], mood) for i in (fetch_demo() if DEMO else fetch_live())]
             stocks.sort(key=lambda x: (ORDER[x["signal"]], -x["score"]))
             for s in stocks:
                 log_signal(s, now)
             try:
+                ALERTS.trades = trade_summary(now)
                 ALERTS.on_scan(now, stocks, ms, mood)
             except Exception:
                 log.exception("alert error")
@@ -1012,7 +1271,7 @@ def scan_loop():
             pub = {k: v for k, v in ms.items() if k != "today"}
             with LOCK:
                 RESULT.update(pub)
-                RESULT.update(stocks=stocks[:12], error=None, updated=now.strftime("%H:%M:%S"), mood=mood)
+                RESULT.update(stocks=stocks[:12], error=None, updated=now.strftime("%H:%M:%S"), mood=mood, trades=trade_summary(now))
         except Exception as e:
             log.exception("scan failed")
             ALERTS.on_error(now, str(e))
@@ -1156,7 +1415,11 @@ def main():
         return telegram_setup()
     if "--test-alert" in sys.argv:
         return test_alert()
+    if C.RUN_UNTIL and not DEMO and datetime.now(NY).time() >= C.RUN_UNTIL:
+        log.info("Started after RUN_UNTIL %s New York: nothing to do.", C.RUN_UNTIL.strftime("%H:%M"))
+        return
     log.info("MOMENTUM DESK starting (%s)", "DEMO - fake data" if DEMO else "LIVE market data, feed=" + FEED)
+    load_setup_hist()
     try:
         srv = Server((C.HOST, PORT), H)
     except OSError:

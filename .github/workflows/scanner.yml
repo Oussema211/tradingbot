@@ -1,12 +1,20 @@
-# Free option: GitHub runs the scanner every weekday morning and sends alerts to your phone.
+# Free hosting: GitHub runs the scanner every weekday morning and sends alerts to Telegram.
 # (No dashboard in this mode, only notifications.) Setup: README.md > "Free option 2: GitHub Actions".
 name: Momentum Desk morning scan
 
 on:
   schedule:
-    # 12:20 UTC = 08:20 New York in summer, 07:20 in winter. GitHub can start scheduled jobs a few minutes late.
+    # 12:20 UTC = 08:20 New York in summer, 07:20 in winter.
     - cron: "20 12 * * 1-5"
-  workflow_dispatch: {}      # "Run workflow" button for a manual test
+    # Backup start: GitHub sometimes delays or drops scheduled jobs. If the first one is running, this one waits
+    # in the queue and then exits quietly; if the first one never started, this one does the scan.
+    - cron: "5 13 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Only send a test Telegram message (check that alerts reach your phone)"
+        type: boolean
+        default: false
 
 concurrency:
   group: momentum-desk
@@ -15,32 +23,46 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 280
+    env:
+      APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+      APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      # a secret (not a variable) so the amount never shows in the public run logs
+      ACCOUNT_SIZE: ${{ secrets.ACCOUNT_SIZE || '0' }}
+      RISK_PCT: ${{ vars.RISK_PCT || '1' }}
+      MAX_LOSSES_PER_DAY: ${{ vars.MAX_LOSSES_PER_DAY || '3' }}
+      MAX_TRADES_PER_STOCK: ${{ vars.MAX_TRADES_PER_STOCK || '2' }}
+      HEADLESS: "1"
+      RUN_UNTIL: "11:05"
+      DATA_DIR: data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - name: Scan until 11:05 New York time
-        env:
-          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
-          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          ACCOUNT_SIZE: ${{ vars.ACCOUNT_SIZE || '0' }}
-          RISK_PCT: ${{ vars.RISK_PCT || '1' }}
-          HEADLESS: "1"
-          RUN_UNTIL: "11:05"
-          DATA_DIR: data
-        run: python momentum_scanner.py
-      - name: Keep the signals log
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Send a test alert
+        if: ${{ inputs.test_alert }}
+        run: python momentum_scanner.py --test-alert
+      # Memory between runs: today's alerts (no repeats) and every past trade result (the scanner learns
+      # which setups win). Kept in the Actions cache, not published as a downloadable file.
+      - name: Restore memory
+        if: ${{ !inputs.test_alert }}
+        uses: actions/cache/restore@v4
         with:
-          name: signals-${{ github.run_id }}
-          path: data/
-          if-no-files-found: ignore
-          retention-days: 30
+          path: data
+          key: desk-data-${{ github.run_id }}
+          restore-keys: desk-data-
+      - name: Scan until 11:05 New York time
+        if: ${{ !inputs.test_alert }}
+        run: python momentum_scanner.py
+      - name: Save memory
+        if: ${{ always() && !inputs.test_alert }}
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: desk-data-${{ github.run_id }}

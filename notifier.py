@@ -241,8 +241,7 @@ class AlertManager:
         self._new_day(now.date())
         if C.ALERT_MARKET_EVENTS:
             self._schedule(now, ms, stocks, mood)
-        if ms.get("window_open"):
-            self._stocks(now, stocks, mood)
+        self._stocks(now, stocks, mood)      # entries only happen inside the window; trade exits are sent any time
 
     # ---- market schedule
     def _schedule(self, now, ms, stocks, mood):
@@ -269,9 +268,11 @@ class AlertManager:
                        today["win_end"].strftime("%H:%M"), 3, ["green_circle"])
         if today["win_end"] <= now < today["win_end"] + timedelta(minutes=30):
             st = self.stats
-            body = "Today: %d GET READY, %d BUY, %d failed setups." % (len(st["ready"]), len(st["buy"]), len(st["failed"]))
-            if st["buy"]:
-                body += "\nBuy signals: " + ", ".join(st["buy"])
+            body = "Today: %d GET READY, %d BUY, %d cancelled plans." % (len(st["ready"]), len(st["buy"]), len(st["failed"]))
+            ts = getattr(self, "trades", None)
+            if ts and ts.get("list"):
+                body += "\nScoreboard: %d wins, %d losses, total %+.1fR" % (ts["wins"], ts["losses"], ts["r"])
+                body += "\n" + "\n".join("%s %s %+.1fR" % (t["sym"], t["result"] or "open", t["r"] or 0) for t in ts["list"][:8])
             body += "\nMomentum usually fades now. Review your trades and the signals log."
             self._emit(d + ":window_close", "market", "Trading window closed", body, 2, ["checkered_flag"])
 
@@ -282,24 +283,25 @@ class AlertManager:
         for s in stocks:
             sym, sig = s["sym"], s["signal"]
             seen.add(sym)
-            # failed setups we told the user about
+            tr = s.get("trade")
+            if tr:
+                self.armed.pop(sym, None)
+                self._trade_events(d, s, tr)
+            # a GET READY plan that broke down before triggering: nobody bought, just cancel the order
             a = self.armed.get(sym)
             if a and s["price"] < a["stop"]:
                 self.armed.pop(sym, None)
                 self.stats["failed"].append(sym)
-                self._emit("%s:%s:fail:%s" % (d, sym, a["trigger"]), "fail", "SETUP FAILED · %s %s" % (sym, usd(s["price"])),
-                           "Fell below the stop %s. If you bought, you should be out. If you didn't, cancel the plan." % usd(a["stop"]), 4, ["red_circle"])
+                self._emit("%s:%s:cancel:%s" % (d, sym, a["trigger"]), "fail", "CANCEL PLAN · %s %s" % (sym, usd(s["price"])),
+                           "It fell under %s before breaking out. Cancel your buy order. No trade, no loss." % usd(a["stop"]), 3, ["x"])
                 continue
             if not s.get("entry"):
                 self.ready_seen.pop(sym, None)
                 continue
             last = self.last_by_sym.get(sym)
-            if sig in ("BUY NOW", "BUY SMALL"):
-                if last and last[0] == "buy" and time.time() - last[2] < 300:
-                    continue
-                if self._emit("%s:%s:buy:%s" % (d, sym, s["trigger"]), "buy", self._title(s), self._body(s, mood), 5, ["green_circle", "moneybag"]):
-                    self.last_by_sym[sym] = ("buy", s["trigger"], time.time())
-                    self.armed[sym] = dict(stop=s["stop"], trigger=s["trigger"])
+            if sig in ("BUY NOW", "BUY HALF") and tr:
+                if self._emit("%s:%s:buy:%s" % (d, sym, tr["id"]), "buy", self._title(s), self._body(s, mood), 5, ["green_circle", "moneybag"]):
+                    self.last_by_sym[sym] = ("buy", s["entry"], time.time())
                     self.stats["buy"].append(sym)
             elif sig == "GET READY" and C.ALERT_LEVEL == "ready" and s["score"] >= C.ALERT_MIN_SCORE:
                 trig, n = self.ready_seen.get(sym, (None, 0))
@@ -319,34 +321,42 @@ class AlertManager:
             if sym not in seen:
                 self.ready_seen.pop(sym, None)
 
+    def _trade_events(self, d, s, tr):
+        """Follow-up alerts for a BUY we sent: sell half, exit, target. Each is sent once."""
+        sym, k = tr["sym"], "%s:%s:%s" % (d, tr["sym"], tr["id"])
+        if tr.get("half"):
+            self._emit(k + ":half", "trade", "💰 SELL HALF · %s %s" % (sym, usd(tr["half_price"])),
+                       "Hit +1R. Sell HALF now.\nMove your stop UP to %s (breakeven): this trade can't lose anymore.\nRest: target %s." % (
+                           usd(tr["entry"]), usd(tr["target"])), 5, ["moneybag"])
+        if tr.get("closed"):
+            win = tr["result"] == "WIN"
+            title = ("✅ TARGET HIT · %s" if "target" in (tr["why"] or "") else "🔴 EXIT NOW · %s") % sym
+            if tr["result"] == "BREAKEVEN":
+                title = "⚪ EXIT · %s (breakeven)" % sym
+            self._emit(k + ":close", "trade", title,
+                       "%s at about %s: %s.\nResult: %s %+.1fR%s" % (
+                           "Sell the rest" if tr.get("half") else "Sell everything", usd(tr["exit"]), tr["why"], tr["result"], tr["r"],
+                           "" if win else "\nSmall loss, as planned. Don't re-enter this stock today."), 5, ["checkered_flag" if win else "red_circle"])
+
     @staticmethod
     def _title(s):
-        icon = {"BUY NOW": "🟢", "BUY SMALL": "🟢", "GET READY": "🟡"}.get(s["signal"], "")
+        icon = {"BUY NOW": "🟢", "BUY HALF": "🟢", "GET READY": "🟡"}.get(s["signal"], "")
         return "%s %s · %s %s" % (icon, s["signal"], s["sym"], usd(s["price"]))
 
     @staticmethod
     def _body(s, mood):
-        L = []
-        if s["signal"] == "GET READY":
-            L.append("Set a price alert at %s. Buy ONLY if it breaks above with strong volume." % usd(s["entry"]))
-        elif s["signal"] == "BUY SMALL":
-            L.append("Breaking out now. Use HALF size: some rules are missing.")
-        else:
-            L.append("Breaking out now. Limit order only.")
-        L.append("Entry %s (never above %s) · Stop %s · Target %s" % (usd(s["entry"]), usd(s["max_price"]), usd(s["stop"]), usd(s["target"])))
-        L.append("Risk %s/share · Reward %s:1 · Score %d (%s)" % (usd(s["entry"] - s["stop"]), s["rr"], s["score"], s["grade"]))
+        L = [s.get("action") or ""]
+        L.append("Entry %s (max %s) · Stop %s · Half at %s · Target %s" % (
+            usd(s["entry"]), usd(s["max_price"]), usd(s["stop"]), usd(s["entry"] + (s["entry"] - s["stop"])), usd(s["target"])))
         sp = share_plan(s)
         if sp:
-            if s["signal"] == "BUY SMALL":
+            if s["signal"] == "BUY HALF":
                 sp = dict(shares=sp["shares"] // 2, risk=sp["risk"] / 2)
-            L.append("Size: %d shares (you risk %s if stopped)" % (sp["shares"], usd(sp["risk"])))
-        L.append("Why: " + s["why"])
+            L.append("Size: %d shares (you lose %s if stopped)" % (sp["shares"], usd(sp["risk"])))
+        L.append("Checks passed: %d/%d · %s" % (s.get("passed", 0), s.get("total", 0), s["why"]))
+        miss = [c[0] for c in s.get("checks", []) if not c[1] and not c[2]]
+        if miss:
+            L.append("Missing: " + ", ".join(miss[:3]))
         if s.get("news"):
-            L.append("News: " + s["news"][0]["h"][:140])
-        bad = [t[1] for t in s.get("tips", []) if t[0] == "bad"]
-        warn = [t[1] for t in s.get("tips", []) if t[0] == "warn"]
-        if bad or warn:
-            L.append("Careful: " + "; ".join((bad + warn)[:2]))
-        if mood and mood.get("tone") == "bad":
-            L.append("Weak market today: half size, take profits early.")
+            L.append("News: " + s["news"][0]["h"][:120])
         return "\n".join(L)

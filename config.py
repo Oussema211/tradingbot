@@ -71,6 +71,8 @@ BRIEF_AT = env_time("MORNING_BRIEF_AT", "09:00")  # morning summary notification
 # ---- risk (used for share counts in alerts; the dashboard lets each viewer override) --
 ACCOUNT_SIZE = env_float("ACCOUNT_SIZE", 0)        # 0 = don't show share counts in alerts
 RISK_PCT = env_float("RISK_PCT", 1.0)              # % of the account you accept to lose per trade
+MAX_LOSSES = int(env_float("MAX_LOSSES_PER_DAY", 3))  # after this many losing trades in a day: no more BUY signals
+MAX_TRADES_PER_STOCK = int(env_float("MAX_TRADES_PER_STOCK", 2))  # and never re-enter a stock that already lost today
 
 # ---- notifications --------------------------------------------------------
 TELEGRAM_TOKEN = env("TELEGRAM_BOT_TOKEN")
@@ -103,4 +105,6 @@ RUN_UNTIL = env_time("_UNUSED", _ru) if _ru else None
 os.makedirs(DATA_DIR, exist_ok=True)
 LOG_FILE = os.path.join(DATA_DIR, "signals_log.csv")
 ALERT_STATE_FILE = os.path.join(DATA_DIR, "alert_state.json")
+TRADES_FILE = os.path.join(DATA_DIR, "trades_state.json")
+TRADE_LOG = os.path.join(DATA_DIR, "trades_log.csv")
 WEB_FILE = os.path.join(HERE, "web", "index.html")
