@@ -135,7 +135,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
     <li><b>Finds the crowd:</b> scans the whole market for stocks up 8% or more, priced $1.50 to $25.</li>
     <li><b>Checks Ross's 5 pillars:</b> price, % gain, relative volume, fresh news, small float.</li>
     <li><b>Researches each one</b> across 4 sources: Alpaca (prices and news), Yahoo Finance (float, short interest, ownership, company), Finviz (backup float and more headlines) and SEC EDGAR (official filings that reveal share offerings).</li>
-    <li><b>Runs an 18-point checklist</b> (8 MUST items) and finds the entry: a short, quiet pullback after a run, then a break above its high on a volume surge.</li>
+    <li><b>Runs a 20-point checklist</b> (9 MUST items, the rest weighted) and finds the entry: a short, quiet pullback after a run, then a break above its high on a volume surge.</li>
     <li><b>Follows every BUY to the exit:</b> the plan is frozen, then HOLD, SELL HALF at +1R, EXIT at the stop or target. Results go on the scoreboard.</li>
     <li><b>Maps the key levels</b> (high of day, pre-market high, yesterday's high, 52-week high, round numbers) to see where sellers will show up.</li>
     <li><b>Filters out traps:</b> dilution news, offering prospectuses at the SEC, wide spreads, thin stocks, prices under VWAP, and stocks that already ran.</li>
@@ -143,7 +143,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
   </div>
   <div class="card"><h2>What each signal means</h2>
    <table class="sigtab"><tbody>
-    <tr><td><span class="tag go" style="--c:var(--ok)">BUY NOW</span></td><td>It broke out the right way and passed every MUST check, with at most 1 other missing. The only time to buy.</td></tr>
+    <tr><td><span class="tag go" style="--c:var(--ok)">BUY NOW</span></td><td>It broke out the right way, passed every MUST check, and is missing at most 2 points of the weighted checks. The only time to buy.</td></tr>
     <tr><td><span class="tag go" style="--c:var(--ok)">HOLD</span></td><td>You're in. The plan is frozen: same stop, same target. Do nothing.</td></tr>
     <tr><td><span class="tag go" style="--c:var(--ok)">SELL HALF</span></td><td>It reached +1R. Sell half and move your stop to your entry price: the trade can't lose anymore.</td></tr>
     <tr><td><span class="tag" style="--c:var(--bad)">EXIT NOW</span></td><td>Stop hit, lost VWAP, or no follow-through in 10 minutes. Sell everything. Small loss, as planned.</td></tr>
@@ -251,8 +251,8 @@ function todo(s){const z=s.entry?sizeOf(s):null,c=CLS[s.signal],L=[];
  if(data.mood&&data.mood.tone==='bad'&&/BUY|READY/.test(s.signal))L.push('<span class="warn">Weak market today: take profits early.</span>');
  return `<div class="verdict" style="--c:var(--${VAR[c]})">${head}<small>Checks passed: ${s.passed}/${s.total}${s.trade?' · trade opened '+esc(s.trade.opened_ny)+' NY at '+usd(s.trade.entry):''}</small></div>`+(L.length?'<ol class="todo">'+L.map(x=>'<li>'+x+'</li>').join('')+'</ol>':'')}
 
-function checks(s){return`<h3>The checklist</h3><p class="expl">Every <span class="must">MUST</span> item has to pass, and at most 1 other can be missing. Otherwise: NO TRADE.</p>
- <ul class="ck">${(s.checks||[]).map(c=>`<li>${ICON(c[1])}<span>${esc(c[0])}${c[2]?'<span class="must">MUST</span>':''}</span><small>${esc(c[3])}</small></li>`).join('')}</ul>`}
+function checks(s){return`<h3>The checklist</h3><p class="expl">Every <span class="must">MUST</span> item has to pass. The others are weighted: key items cost 2 points, minor ones 1. BUY only if ${s.allowed} point${s.allowed===1?'':'s'} or fewer are missing (now: ${s.penalty}). Unknown data (?) doesn't count against it.</p>
+ <ul class="ck">${(s.checks||[]).map(c=>`<li>${ICON(c[1])}<span>${esc(c[0])}${c[2]?'<span class="must">MUST</span>':c[4]===2?'<span class="must" style="color:var(--mute)">KEY</span>':''}</span><small>${esc(c[3])}</small></li>`).join('')}</ul>`}
 
 function scoreboard(){const t=data.trades;if(!t||!t.list||!t.list.length)return'<h2>Today\'s scoreboard</h2><p class="mute">No trades called yet today. Every BUY the app calls is tracked here to the exit, wins and losses.</p>';
  const n=t.wins+t.losses+t.be,wr=n?Math.round(t.wins/n*100):null;

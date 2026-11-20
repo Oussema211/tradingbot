@@ -353,13 +353,13 @@ def detect(bars, p, now):
     after = look[hi + 1:]
     base = min(b["l"] for b in look[:hi + 1])
     run = sw - base
-    if run >= 0.03 * sw and 1 <= len(after) <= 6:
+    if run >= 0.03 * sw and 1 <= len(after) <= 12:
         pl = min(b["l"] for b in after)
         depth = (sw - pl) / run
-        if depth <= 0.55 and pl <= p <= sw and (sw - p) / sw <= 0.03:
+        if depth <= (0.55 if len(after) <= 6 else 0.35) and pl <= p <= sw and (sw - p) / sw <= 0.03:
             runv = sum(b["v"] for b in look[max(0, hi - 2):hi + 1]) / min(3, hi + 1)
             pullv = sum(b["v"] for b in after) / len(after)
-            return dict(setup="Micro pullback" if len(after) <= 3 else "Bull flag", state="ARMED",
+            return dict(setup="Micro pullback" if len(after) <= 3 else "Bull flag" if len(after) <= 6 else "Flat-top breakout", state="ARMED",
                         trigger=sw, stop=pl, lightvol=pullv < runv, pullv=pullv,
                         note="It ran up %.0f%%, then paused for %d minute%s and gave back %d%% of the run on %s volume." % (
                             run / base * 100, len(after), "" if len(after) == 1 else "s", depth * 100, "light (good)" if pullv < runv else "heavy (less good)"))
@@ -583,7 +583,13 @@ def analyze(inp, now, window_open, mood=None):
     # ---- THE DECISION: a strict checklist. Every MUST item has to pass, or there is no trade.
     ext = (p / vw - 1) * 100 if vw else None
     stable = bool(plan) and plan.get("seen", 1) >= 2
-    bvol = bool(plan and plan.get("pullv") and len(bars) >= 2 and max(bars[-1]["v"], bars[-2]["v"]) >= 1.5 * plan["pullv"])
+    def vpace(b):
+        try:
+            el = (now - parse_t(b["t"]).astimezone(NY)).total_seconds()
+        except Exception:
+            return b["v"]
+        return b["v"] * 60 / max(15, el) if 0 <= el < 60 else b["v"]
+    bvol = bool(plan and plan.get("pullv") and len(bars) >= 2 and max(vpace(bars[-1]), bars[-2]["v"]) >= 1.5 * plan["pullv"])
     late_morning = m >= 630 and not DEMO
     # buying pressure: volume on green candles vs red candles over the last 10 minutes
     up = sum(b["v"] for b in bars[-10:] if b["c"] >= b["o"]); dn = sum(b["v"] for b in bars[-10:] if b["c"] < b["o"])
@@ -596,9 +602,13 @@ def analyze(inp, now, window_open, mood=None):
     hold_ok = True
     if state == "TRIGGERED" and lb and lb["h"] > lb["l"] and lb["h"] >= (plan or {}).get("trigger", 1e9):
         hold_ok = (lb["h"] - p) <= 0.5 * (lb["h"] - lb["l"])
+    yq0 = inp.get("yq") or {}
+    fv0 = yq0.get("vol") if yq0.get("day") == now.date().isoformat() else None
+    dollars = fv0 * p if fv0 else None
     CK = []
-    def ck(name, ok, must, detail):
-        CK.append([name, bool(ok), must, detail])
+    def ck(name, ok, must, detail, w=0):
+        CK.append([name, None if ok is None else bool(ok), must, detail, w])
+    # MUST: any fail = no trade
     ck("Volume 3x+ normal", rvol >= 3, True, "%.1fx" % rvol)
     ck("Above VWAP", vw and p > vw, True, "VWAP $%.2f" % vw if vw else "n/a")
     ck("No offering / dilution", kind != "dilution" and not off, True, "dilution news" if kind == "dilution" else "SEC offering filed" if off else "clean")
@@ -606,24 +616,30 @@ def analyze(inp, now, window_open, mood=None):
     ck("Tight stop (8% or less)", plan and risk_pct <= 8, True, "%.1f%%" % risk_pct if plan else "no stop yet")
     ck("Room to run (1R+ to resistance)", room_r is None or room_r >= 1, True,
        "%s %.1fR away" % (res_above["label"], room_r) if room_r is not None else "clear")
+    ck("Liquid ($1M+ traded today)", None if dollars is None else dollars >= 1e6, True, "unknown" if dollars is None else "$%.1fM" % (dollars / 1e6))
     ck("Breakout on a volume surge", bvol, True, "yes" if bvol else "checked at the breakout")
-    ck("Up 10%+ today", chg >= 10, False, "%+.1f%%" % chg)
-    ck("Real news catalyst", kind == "strong", False, {"strong": "strong", "weak": "weak news", "dilution": "dilution", "none": "no news"}[kind])
-    ck("Low float (under 20M)", fl is not None and fl < 20, False, "unknown" if fl is None else "%.1fM" % fl)
-    ck("Trend up (9 EMA + MACD)", e9 and p > e9 and mac, False, "yes" if e9 and p > e9 and mac else "no")
-    ck("Quiet pullback volume", plan and plan.get("lightvol"), False, "light" if plan and plan.get("lightvol") else "heavy" if plan else "n/a")
-    ck("Not stretched (<20% over VWAP)", ext is None or ext <= 20, False, "n/a" if ext is None else "%+.0f%% vs VWAP" % ext)
-    ck("Market not weak", (mood or {}).get("tone") != "bad", False, (mood or {}).get("tone") or "unknown")
-    ck("Prime time (before 10:30 NY)", not late_morning, False, now.strftime("%H:%M NY"))
-    ck("Buyers in control (last 10 min)", press is None or press >= 1.2, False, "n/a" if press is None else "%.1fx up vs down volume" % press)
-    ck("5-minute trend up", tf5 is not False, False, {True: "yes", False: "no", None: "not enough data"}[tf5])
     ck("Breakout holding (no rejection wick)", hold_ok, True, "yes" if hold_ok else "sellers slammed the breakout")
+    # KEY (2 points each)
+    ck("Real news catalyst", kind == "strong", False, {"strong": "strong", "weak": "weak news", "dilution": "dilution", "none": "no news"}[kind], 2)
+    ck("Low float (under 20M)", None if fl is None else fl < 20, False, "unknown" if fl is None else "%.1fM" % fl, 2)
+    ck("Buyers in control (last 10 min)", None if press is None else press >= 1.2, False, "n/a" if press is None else "%.1fx up vs down volume" % press, 2)
+    ck("5-minute trend up", tf5, False, {True: "yes", False: "no", None: "not enough data"}[tf5], 2)
     hs = SETUP_HIST.get(plan["setup"]) if plan else None
     if hs and hs["n"] >= 8:
-        ck("This setup has an edge (past results)", hs["r"] > 0, False, "%dW/%dL, %+.1fR over %d trades" % (hs["w"], hs["n"] - hs["w"], hs["r"], hs["n"]))
-    must_fail = [c[0] for c in CK if c[2] and not c[1]]
+        ck("This setup has an edge (past results)", hs["r"] > 0, False, "%dW/%dL, %+.1fR over %d trades" % (hs["w"], hs["n"] - hs["w"], hs["r"], hs["n"]), 2)
+    # MINOR (1 point each)
+    ck("Up 10%+ today", chg >= 10, False, "%+.1f%%" % chg, 1)
+    ck("Trend up (9 EMA + MACD)", None if mac is None else bool(e9 and p > e9 and mac), False, "n/a" if mac is None else "yes" if e9 and p > e9 and mac else "no", 1)
+    ck("Quiet pullback volume", plan and plan.get("lightvol"), False, "light" if plan and plan.get("lightvol") else "heavy" if plan else "n/a", 1)
+    ck("Not stretched (<20% over VWAP)", ext is None or ext <= 20, False, "n/a" if ext is None else "%+.0f%% vs VWAP" % ext, 1)
+    ck("Market not weak", None if not mood else mood.get("tone") != "bad", False, (mood or {}).get("tone") or "unknown", 1)
+    ck("Prime time (before 10:30 NY)", not late_morning, False, now.strftime("%H:%M NY"), 1)
+    must_fail = [c[0] for c in CK if c[2] and c[1] is False]
     must_pre = [x for x in must_fail if x not in ("Breakout on a volume surge", "Breakout holding (no rejection wick)")]
-    soft_fail = [c[0] for c in CK if not c[2] and not c[1]]
+    soft_fail = [c[0] for c in sorted(CK, key=lambda c: -c[4]) if not c[2] and c[1] is False]
+    penalty = sum(c[4] for c in CK if not c[2] and c[1] is False)
+    allowed = 1 if hs and hs["n"] >= 8 and hs["r"] <= 0 else 2     # a setup that has been losing gets stricter
+    strong = penalty <= allowed
     passed = sum(1 for c in CK if c[1])
 
     tl = trades_today(now)
@@ -645,19 +661,19 @@ def analyze(inp, now, window_open, mood=None):
             sig, reason = "NO TRADE", "outside the trading window"
         elif must_fail:
             sig, reason = "NO TRADE", "failed: " + must_fail[0].lower()
-        elif len(soft_fail) <= (0 if hs and hs["n"] >= 8 and hs["r"] <= 0 else 1):
+        elif strong:
             sig = "BUY NOW"
         else:
             sig, reason = "NO TRADE", "not strong enough: missing " + ", ".join(x.lower() for x in soft_fail[:3])
     elif state == "ARMED":
         if real_blocks:
             sig, reason = "NO TRADE", real_blocks[0]
-        elif window_open and not must_pre and len(soft_fail) <= 1:
+        elif window_open and not must_pre and strong:
             sig = "GET READY"
         else:
             sig = "WAIT"
             reason = ("waiting for: " + must_pre[0].lower()) if must_pre else "not strong enough: missing " + ", ".join(x.lower() for x in soft_fail[:3]) \
-                if len(soft_fail) > 1 else "outside the trading window"
+                if not strong else "outside the trading window"
     elif state == "LATE" and not real_blocks:
         sig, reason = "TOO LATE", "it already ran past the entry"
     else:
@@ -775,7 +791,7 @@ def analyze(inp, now, window_open, mood=None):
     tail = bars[-60:]
     return dict(sym=s, price=round(p, 2), chg=round(chg, 1), rvol=round(rvol, 1), float_m=fl, spread=None if spread is None else round(spread, 2),
                 spread_iex=iex, vwap=vw and round(vw, 2), ema9=e9 and round(e9, 2), score=score, grade=grade, signal=sig, state=state,
-                action=action, reason=reason, checks=CK, passed=passed, total=len(CK),
+                action=action, reason=reason, checks=CK, passed=passed, total=sum(1 for c in CK if c[1] is not None), penalty=penalty, allowed=allowed,
                 trade=tr and {k: tr.get(k) for k in TRADE_PUBLIC},
                 setup=plan["setup"] if plan else None, note=plan.get("note") if plan else None,
                 trigger=plan and round(plan["trigger"], 2), entry=entry, stop=stop, target=target, max_price=max_price, blocks=blocks, rr=rr,
@@ -1104,7 +1120,7 @@ def fetch_live():
     for c in sorted(cand, key=lambda c: (c[1] not in keep_syms, -c[0])):
         if c[1] in keep_syms or not FUND_RX.search(asset_name(c[1])):
             keep.append(c)
-        if len(keep) >= 15:
+        if len(keep) >= 25:
             break
     cand = keep
     if not cand:
