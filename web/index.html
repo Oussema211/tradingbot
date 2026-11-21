@@ -92,6 +92,15 @@ ul.ck{list-style:none;margin:6px 0 0;padding:0;display:grid;grid-template-column
 .must{font-size:10px;letter-spacing:.06em;color:var(--gold2);border:1px solid var(--line);border-radius:99px;padding:0 6px;margin-left:6px;vertical-align:middle}
 .score{display:flex;gap:10px;flex-wrap:wrap}.score>div{flex:1;min-width:70px;border:1px solid var(--hair);border-radius:10px;padding:8px 10px;background:var(--panel);text-align:center}.score b{display:block;font:600 24px/1.1 var(--serif)}.score span{font-size:11px;color:var(--mute);letter-spacing:.06em}
 @media(max-width:700px){ul.ck{grid-template-columns:minmax(0,1fr)}}
+.l2top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 10px}.l2top .verdict{margin:0;flex:1;font-size:15px}
+.lad{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}.lad table{font-size:13px;font-variant-numeric:tabular-nums}.lad td{padding:4px 6px;border-top:1px solid var(--hair);position:relative}
+.lad th{padding:0 6px 6px}.lad .bar{position:absolute;top:1px;bottom:1px;opacity:.16;border-radius:3px;pointer-events:none}.lad .bd .bar{right:0;background:var(--ok)}.lad .ak .bar{left:0;background:var(--bad)}
+.lad tr.wall td{font-weight:700}.lad tr.wall td:first-child{box-shadow:inset 3px 0 0 var(--gold)}.lad .mm{color:var(--mute);font-size:11px}.lad .zone{font-size:10px;color:var(--gold2);border:1px solid var(--line);border-radius:99px;padding:0 5px;margin-left:4px}
+.imb{height:8px;border-radius:99px;background:var(--bad);overflow:hidden;margin:8px 0 2px}.imb i{display:block;height:100%;background:var(--ok)}
+.flip{list-style:none;margin:6px 0 0;padding:0}.flip li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--hair);font-size:14px;color:#e2dccd}.flip li .tag{flex:none;min-width:96px;text-align:center}
+.poss{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}.poss>div{border:1px solid var(--hair);border-left:3px solid var(--c);border-radius:10px;padding:9px 11px;background:var(--panel);font-size:13px;color:#d8d2c3}.poss b{display:block;color:var(--c);font-size:13px;margin-bottom:2px}
+.l2form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.l2form input{flex:1;min-width:200px;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:500 14px var(--sans)}
+@media(max-width:700px){.lad,.poss{grid-template-columns:minmax(0,1fr)}.lad .mm{display:none}}
 details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
 @media(max-width:1000px){.grid,.learn{grid-template-columns:minmax(0,1fr)}.right{position:static}}
 @media(max-width:700px){.cells,.cells.three,.scen{grid-template-columns:repeat(2,minmax(0,1fr))}.pillars{grid-template-columns:repeat(3,minmax(0,1fr))}.action .clock{text-align:left}.hide-s{display:none}}
@@ -101,7 +110,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
 <body>
 <header class="band">
  <div><div class="brand">Momentum<i>.</i>Desk</div><div class="meta" id="meta">Connecting...</div></div>
- <div class="pills"><span class="pill" id="mode">-</span><span class="pill" id="sess">-</span><span class="pill" id="win">-</span><span class="pill" id="push" title="Phone notifications sent by the server">-</span><button id="snd">Turn on browser alerts</button></div>
+ <div class="pills"><span class="pill" id="mode">-</span><span class="pill" id="sess">-</span><span class="pill" id="win">-</span><span class="pill" id="l2pill" title="Real-time order book (Schwab)">-</span><span class="pill" id="push" title="Phone notifications sent by the server">-</span><button id="snd">Turn on browser alerts</button></div>
 </header>
 <div class="err" id="err" hidden></div>
 <section class="action" id="act" style="--c:var(--gold)"><div><div class="big" id="actBig">Connecting...</div><div class="sub" id="actSub"></div></div><div class="clock" id="clk"></div></section>
@@ -113,6 +122,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
    <p class="mute" id="empty" hidden>No stock matches right now. That's normal: no setup, no trade.</p>
    <p class="mute" style="margin:12px 0 0">Ranked best first. Click a stock for the full analysis.</p>
   </div>
+  <div class="card" id="l2Card"><h2>Level 2</h2><p class="mute">Loading...</p></div>
   <div class="card" id="sbCard"><h2>Today's scoreboard</h2><p class="mute">No trades called yet today.</p></div>
   <div class="card" id="moodCard"><h2>Market mood</h2><p class="mute">Loading...</p></div>
   <div class="card" id="alCard"><h2>Recent alerts</h2><p class="mute">None yet today.</p></div>
@@ -162,6 +172,18 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
     <dt>Institutions / insiders</dt><dd>Big funds holding a lot makes a stock calmer. Low institutional ownership means retail traders drive it, so it's wilder.</dd>
    </dl>
   </div>
+  <div class="card"><h2>Level 2, explained</h2>
+   <dl class="gl">
+    <dt>Bid / Ask</dt><dd>Bid = the best price a buyer is offering right now. Ask = the cheapest price a seller accepts. Level 1 shows only those two; Level 2 shows every price level behind them.</dd>
+    <dt>Size and "who"</dt><dd>Shares waiting at each price, and who posted them: exchanges (NSDQ, ARCA, EDGX, BATS, MEMX) or market makers (NITE, VIRT, CDRG, GSCO...). Market makers trade both ways, so one name alone means little.</dd>
+    <dt>Wall</dt><dd>A level 3x+ bigger than normal. A seller wall caps the price until it's eaten; a buyer wall acts as support until it's hit through.</dd>
+    <dt>Eaten / hit through</dt><dd>The wall traded away. A seller wall eaten = real breakout. A buyer wall hit through = support broke.</dd>
+    <dt>Pulled (spoof)</dt><dd>A wall vanished without trading. It was likely there to scare or lure traders. Never trust a level that keeps appearing and disappearing.</dd>
+    <dt>Hidden seller / buyer (iceberg)</dt><dd>Far more shares trade at one price than were ever shown, and the order keeps refilling. A big player is hiding size: a hidden seller caps breakouts, a hidden buyer is strong support.</dd>
+    <dt>Imbalance</dt><dd>Shares bid vs offered near the price. 1.5x+ more bids = buyers stacked; 1.5x+ more asks = sellers stacked.</dd>
+    <dt>Thin / gap</dt><dd>Few orders between two prices. Price can jump through the gap fast, up or down.</dd>
+   </dl>
+  </div>
   <div class="card"><h2>SEC filings, explained</h2>
    <dl class="gl">
     <dt>424B (prospectus)</dt><dd>Shares are being sold now. This is the clearest dilution signal, so the app blocks the trade for 10 days.</dd>
@@ -174,7 +196,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
   </div>
  </div>
 </details></section>
-<p class="band foot">Education only, not financial advice. The app gives rule-based ideas and doesn't place trades; a signal doesn't guarantee a win. Practise in a simulator first. Sources: Alpaca (IEX feed, a sample of the market), Yahoo Finance, Finviz, SEC EDGAR.</p>
+<p class="band foot">Education only, not financial advice. The app gives rule-based ideas and doesn't place trades; a signal doesn't guarantee a win. Practise in a simulator first. Sources: Alpaca (IEX feed, a sample of the market), Charles Schwab (real-time Level 1 and Level 2, when connected), Yahoo Finance, Finviz, SEC EDGAR.</p>
 <script>{
 const $=id=>document.getElementById(id),usd=v=>v==null?'-':(v<0?'-$':'$')+Math.abs(Number(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -307,7 +329,9 @@ function ticket(s){
  const co=f.summary?`<h3>The company</h3><p style="font-size:14px;color:#d8d2c3;margin:6px 0">${esc(f.summary)}${f.summary.length>=700?'...':''}</p><p class="mute">${[f.employees?f.employees.toLocaleString()+' employees':null,f.earnings?'Next earnings: '+f.earnings:null].filter(Boolean).map(esc).join(' · ')}${f.website?` · <a href="${esc(f.website)}" target="_blank" rel="noopener" style="color:var(--gold2)">website</a>`:''}</p>`:'';
  return `<div class="hero"><div><div class="eyebrow">${esc(s.setup||'NO SETUP YET').toUpperCase()}</div><div class="tk">${esc(s.sym)}</div>${f.name?`<div class="co">${esc(f.name)}</div>`:''}${sub?`<div class="mute">${sub}</div>`:''}<div class="sig ${cls}">${esc(sig)}</div></div><div class="ring ${cls}" style="--p:${Math.round(100*s.passed/s.total)}"><b>${s.passed}/${s.total}</b><small>CHECKS</small></div></div>
  ${todo(s)}
+ ${explainCard(s)}
  ${plan}
+ <h3>Level 2: the live order book</h3><p class="expl">Every buyer (bids, green) and seller (asks, red) waiting right now, with share sizes and who posted them. Updates every second. Read below for what it means and everything that can happen next.</p><div id="l2"><p class="mute">Loading the order book...</p></div>
  <h3>Chart (1-minute candles)</h3><div class="fig" aria-label="1-minute candlestick chart with VWAP, 9 EMA, volume and key levels"><svg id="ch"></svg></div>
  <div class="legend"><span><i style="background:#5fd0a0"></i>up candle</span><span><i style="background:#d9645a"></i>down candle</span><span><i style="background:#a78bfa"></i>VWAP</span><span><i style="background:#e6cf9a"></i>9 EMA (dotted)</span><span>bars at the bottom = volume</span></div>
  ${checks(s)}
@@ -323,6 +347,51 @@ function ticket(s){
  ${co}
  <details id="why" ${whyOpen?'open':''}><summary>Why ${s.score}%? See every scoring rule</summary><ul class="rules">${s.rules.map(r=>`<li><div class="top"><span>${esc(r[0])} <span class="mute">· ${esc(r[3])}</span></span><span class="pts ${r[1]===r[2]?'ok':r[1]>0?'warn':'bad'}">${r[1]===r[2]?'✓':r[1]>0?'½':'✗'} ${r[1]}/${r[2]}</span></div><div class="why">${esc(WHY[r[0]]||'')}</div></li>`).join('')}</ul>
  <p class="mute" style="margin-top:10px">The score ranks stocks. The BUY decision comes from the checklist above.</p></details></details>`}
+
+// ---- why this signal + every way it can change
+const flipTag=k=>{const b=k.split(' ')[0]==='CLOSED'?'go':CLS[k]||'idle';return`<span class="tag ${b}" style="--c:var(--${VAR[b]})">${esc(k==='-'?'NOT TODAY':k)}</span>`};
+function explainCard(s){const e=s.explain;if(!e)return'';
+ return`<h3>Why ${esc(s.signal)}, and what would change it</h3><p class="expl">${esc(e.means)}</p>
+ <div class="tipgrp"><b class="warn">WHY IT IS ${esc(s.signal)} RIGHT NOW</b><ul class="tips">${e.why.map(w=>`<li>${ICON(/^(Hard stop|Failed|Missing|Not strong)/.test(w)?'bad':/^Level 2: Book favors buyers/.test(w)?'good':/^Level 2: Book favors sellers/.test(w)?'bad':'warn')}<span>${esc(w)}</span></li>`).join('')||'<li><span class="mute">Nothing to add.</span></li>'}</ul></div>
+ ${e.flip.length?`<div class="tipgrp"><b class="ok">EVERY WAY IT CAN CHANGE</b><ul class="flip">${e.flip.map(f=>`<li>${flipTag(f[0])}<span>${esc(f[1])}</span></li>`).join('')}</ul></div>`:''}`}
+
+// ---- Level 2: live order book, polled every second for the selected stock
+let book=null,lastL2='',lastL2c='',l2msg='';
+const px=v=>v==null?'-':v>=1?'$'+Number(v).toFixed(2):'$'+Number(v).toFixed(4),shr=n=>Number(n||0).toLocaleString('en-US');
+const TONE={good:'good',bad:'bad',warn:'warn',info:'warn'},PC={ok:'ok',bad:'bad',warn:'gold',info:'mute'};
+function ladder(b){const mx=Math.max(1,...b.bids.slice(0,10).map(x=>x[1]),...b.asks.slice(0,10).map(x=>x[1]));
+ const row=(x,side)=>{const w=Math.round(100*x[1]/mx),wall=x[1]>=b.wall_min,z=side==='a'&&b.entry&&x[0]>=b.entry-1e-9&&x[0]<=(b.max_price||b.entry)+1e-9?'<span class="zone">ENTRY</span>':side==='b'&&b.stop&&Math.abs(x[0]-b.stop)<.005?'<span class="zone">STOP</span>':'';
+  return side==='b'?`<tr class="bd ${wall?'wall':''}"><td class="mm">${esc(x[3].join(' '))}</td><td class="n">${shr(x[1])}<span class="bar" style="width:${w}%"></span></td><td class="n ok">${px(x[0])}${z}</td></tr>`
+   :`<tr class="ak ${wall?'wall':''}"><td class="bad">${px(x[0])}${z}</td><td class="n">${shr(x[1])}<span class="bar" style="width:${w}%"></span></td><td class="mm">${esc(x[3].join(' '))}</td></tr>`};
+ return`<div class="lad"><table><thead><tr><th>WHO</th><th class="n">SHARES</th><th class="n">BID (BUYERS)</th></tr></thead><tbody>${b.bids.slice(0,10).map(x=>row(x,'b')).join('')}</tbody></table>
+ <table><thead><tr><th>ASK (SELLERS)</th><th class="n">SHARES</th><th>WHO</th></tr></thead><tbody>${b.asks.slice(0,10).map(x=>row(x,'a')).join('')}</tbody></table></div>`}
+function l2html(){const st=(book&&book.status)||(data&&data.l2)||{};
+ if(!book||book.sym!==sel)return'<p class="mute">Loading the order book...</p>';
+ if(!book.ok)return`<p class="mute">${esc(book.why||'')} ${st.enabled?(st.logged_in||st.demo?'It appears within a few seconds for the top stocks.':'Log in to Schwab in the <b>Level 2</b> box on the right.'):'See the <b>Level 2</b> box on the right to switch it on (free with a Schwab account).'}</p>`;
+ const b=book,tot=(b.bid_near||0)+(b.ask_near||0),bp=tot?Math.round(100*b.bid_near/tot):50,c=b.tone==='good'?'ok':b.tone==='bad'?'bad':'gold';
+ const grp=(k,lab,cls)=>{const L=b.reads.filter(r=>TONE[r[0]]===k);return L.length?`<div class="tipgrp"><b class="${cls}">${lab}</b><ul class="tips">${L.map(r=>`<li>${ICON(r[0]==='info'?null:r[0])}<span><b>${esc(r[1])}</b><small>${esc(r[2])}</small></span></li>`).join('')}</ul></div>`:''};
+ return`<div class="l2top"><div class="verdict" style="--c:var(--${c})">${esc(b.headline)}<small>${esc(b.src||'')} book${st.demo?' (DEMO, fake)':''} · ${b.fresh?'live, '+b.age+' s old':'<b class="bad">STALE '+Math.round(b.age)+' s</b>'} · bid ${px(b.bid)} / ask ${px(b.ask)}${b.spread_pct!=null?' · spread '+b.spread_pct+'%':''}</small></div></div>
+ <div class="imb" title="Shares bid vs offered within 2% of the price"><i style="width:${bp}%"></i></div><p class="mute" style="margin:0 0 10px">Near the price: <span class="ok">${shr(b.bid_near)} shares bid</span> vs <span class="bad">${shr(b.ask_near)} offered</span>${b.imb!=null?' ('+b.imb+'x)':''}. Bold rows = big orders (walls), 3x+ the normal size.</p>
+ ${ladder(b)}
+ <h3 style="font-size:18px">What the book is telling you</h3>${grp('bad','AGAINST THE TRADE','bad')}${grp('good','IN YOUR FAVOR','ok')}${grp('warn','GOOD TO KNOW','warn')}
+ <h3 style="font-size:18px">Every possibility from here</h3><p class="expl">What each next move in the book would mean. Watch for the first one that happens.</p>
+ <div class="poss">${b.possible.map(p=>`<div style="--c:var(--${PC[p[0]]})"><b>${esc(p[1])}</b>${esc(p[2])}</div>`).join('')}</div>
+ <p class="mute" style="margin:10px 0 0">Level 2 shows intentions, not trades: orders can be pulled in a split second, and big players hide size. Use it to confirm a setup, never as the only reason to buy.</p>`}
+function drawL2(force){const el=$('l2');if(!el)return;const h=l2html();if(force||h!==lastL2){lastL2=h;el.innerHTML=h}}
+async function pollBook(){if(!sel||document.hidden)return;try{const r=await fetch('/api/book?sym='+encodeURIComponent(sel),{cache:'no-store'});if(r.ok){book=await r.json();drawL2()}}catch(e){}}
+function l2card(){const st=(data&&data.l2)||{};
+ if(st.demo)return'<h2>Level 2</h2><p class="mute">Demo mode: the order books are fake, so you can see how the panel works. Real books come from Schwab in live mode.</p>';
+ if(!st.configured)return`<h2>Level 2 (real order book)</h2><p class="mute" style="margin-top:0">Off. Alpaca only gives the best bid/ask (Level 1). Real Level 2 is free with a <b>Charles Schwab</b> brokerage account:</p>
+  <ol class="steps"><li>Go to <b>developer.schwab.com</b>, create an app with <b>Market Data Production</b>, callback URL <b>https://127.0.0.1</b>. Approval can take a few days.</li><li>Put <b>SCHWAB_APP_KEY</b> and <b>SCHWAB_APP_SECRET</b> in <b>.env</b> and restart the app.</li><li>Log in once here (a box appears). Repeat every 7 days, as Schwab requires.</li></ol>`;
+ if(!st.logged_in)return`<h2>Level 2: connect Schwab</h2><p class="${st.error?'bad':'mute'}" style="margin-top:0">${esc(st.error||'One login and the real order book switches on for 7 days.')}</p>
+  <ol class="steps"><li><a href="${esc(st.login_url)}" target="_blank" rel="noopener" style="color:var(--gold2)">Open the Schwab login</a> and sign in with your <b>brokerage</b> login, then Allow.</li><li>The browser ends on <b>${esc(st.callback)}</b> with an error page. That's normal.</li><li>Copy the whole address from the address bar and paste it below <b>within 30 seconds</b>.</li></ol>
+  <div class="l2form"><input id="l2url" placeholder="https://127.0.0.1/?code=..." autocomplete="off"><button id="l2go">Connect</button></div>${l2msg?`<p class="omsg ${/^Connected/.test(l2msg)?'ok':'bad'}">${esc(l2msg)}</p>`:''}`;
+ return`<h2>Level 2</h2><p class="${st.live?'ok':'warn'}" style="margin-top:0">${st.live?'Live: Schwab order books for the top '+st.symbols+' stocks.':'Connected, '+esc(st.status)+(st.error?': '+esc(st.error):'')}</p>
+  <p class="mute" style="margin:0">Schwab login valid ${st.days_left>=1?Math.floor(st.days_left)+' more day'+(Math.floor(st.days_left)===1?'':'s'):'<b class="bad">less than a day</b>: log in again soon (python momentum_scanner.py --schwab-login)'}. The real bid/ask also replaces the IEX sample for the spread check.</p>`}
+document.addEventListener('click',async e=>{if(!e.target.closest('#l2go'))return;const v=($('l2url')||{}).value||'';l2msg='Connecting...';
+ try{const r=await fetch('/api/schwab-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:v})});const j=await r.json();l2msg=j.ok?'Connected. The order book appears within a few seconds.':'Failed: '+(j.error||r.status)}catch(x){l2msg='Failed: '+x}
+ lastL2c='';if(data&&data.l2&&/^Connected/.test(l2msg))data.l2.logged_in=true;draw()});
+setInterval(pollBook,1000);
 
 function mood(){const m=data.mood;if(!m)return'<h2>Market mood</h2><p class="mute">Not available yet.</p>';
  return`<h2>Market mood</h2><p class="${m.tone==='good'?'ok':m.tone==='bad'?'bad':'warn'}" style="margin:0">${esc(m.text)}</p><div class="mood">${(m.items||[]).map(i=>`<span>${esc(i[0])}<b class="${i[1]>=0?'ok':'bad'}">${i[1]>0?'+':''}${i[1]}%</b>${i[2]?'above VWAP':'below VWAP'}</span>`).join('')}</div>
@@ -353,7 +422,9 @@ function draw(){
  const list=data.stocks;if(!list.find(s=>s.sym===sel))sel=list[0]&&list[0].sym;
  $('empty').hidden=list.length>0;
  $('rows').innerHTML=list.map(s=>{const c=CLS[s.signal];return`<tr class="row ${s.sym===sel?'sel':''}" data-s="${esc(s.sym)}"><td><span class="sym">${esc(s.sym)}</span><span class="rw">${esc(s.reason&&!/^(BUY|HOLD)/.test(s.signal)?s.reason:s.why)}</span></td><td><span class="tag ${c}" style="--c:var(--${VAR[c]})">${esc(s.signal)}</span></td><td class="n">${s.passed}/${s.total}</td><td class="n">${usd(s.price)}</td><td class="n">${s.chg}%</td><td class="n hide-s">${s.float_m==null?(s.fund&&s.fund.loaded?'?':'...'):s.float_m.toFixed(1)+'M'}</td></tr>`}).join('');
- banner();const html=ticket(cur());if(html!==lastTk){lastTk=html;$('tk').innerHTML=html;const c=cur();if(c)chart(c)}
+ banner();const html=ticket(cur());if(html!==lastTk){lastTk=html;$('tk').innerHTML=html;const c=cur();if(c)chart(c);drawL2(true)}
+ const l2s=data.l2||{};$('l2pill').textContent=l2s.demo?'Level 2 · demo':l2s.live?'Level 2 · Schwab live':l2s.configured?(l2s.logged_in?'Level 2 · '+(l2s.status||'connecting'):'Level 2 · login needed'):'Level 2 off';$('l2pill').className='pill'+(l2s.live?' live':' off');
+ const lc=l2card();if(lc!==lastL2c){lastL2c=lc;$('l2Card').innerHTML=lc}
  const mh=mood();if(mh!==lastMood){lastMood=mh;$('moodCard').innerHTML=mh}
  const sb=scoreboard();if(sb!==lastSb){lastSb=sb;$('sbCard').innerHTML=sb}
  const nf=data.notify||{},ch=nf.channels||[];$('push').textContent=ch.length?'Phone alerts · '+ch.join(' + '):'Phone alerts off';$('push').className='pill'+(ch.length&&!nf.error?' live':' off');$('push').title=nf.error?'Last send failed: '+nf.error:'Phone notifications sent by the server';
@@ -361,7 +432,7 @@ function draw(){
  if(ah!==lastAl){lastAl=ah;$('alCard').innerHTML=ah}
 }
 
-$('rows').addEventListener('click',e=>{const r=e.target.closest('tr.row');if(r){sel=r.dataset.s;omsg='';draw();$('tk').scrollIntoView({behavior:'smooth',block:'start'})}});
+$('rows').addEventListener('click',e=>{const r=e.target.closest('tr.row');if(r){sel=r.dataset.s;omsg='';draw();pollBook();$('tk').scrollIntoView({behavior:'smooth',block:'start'})}});
 window.addEventListener('resize',()=>{const c=cur();if(c)chart(c)});
 document.addEventListener('toggle',e=>{if(e.target.id==='why')whyOpen=e.target.open},true);
 setInterval(banner,1000);

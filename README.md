@@ -52,6 +52,29 @@ By default you only get BUY alerts and their follow-ups (SELL HALF, EXIT NOW, TA
 
 ---
 
+## 2b. Real-time Level 2 (order book), free with Schwab
+
+Alpaca only gives the best bid and ask (Level 1). For the **real order book** (every price level, share sizes, market makers), connect the free **Charles Schwab Trader API**. It needs a Schwab brokerage account (it can be empty).
+
+1. Go to **developer.schwab.com**, sign up and **Create App**: API product **Market Data Production**, callback URL **`https://127.0.0.1`**. Wait until the app status is **Ready For Use** (it can take a few days).
+2. Copy the app's **App Key** and **Secret** into `.env`: `SCHWAB_APP_KEY=...` and `SCHWAB_APP_SECRET=...`
+3. Log in once: `python momentum_scanner.py --schwab-login`. Sign in with your **brokerage** login, click Allow. The browser ends on an error page at `https://127.0.0.1/?code=...`: **that's normal**. Copy the whole address and paste it into the terminal within about 30 seconds.
+   On a server, either run it there (`docker compose exec -it momentum-desk python momentum_scanner.py --schwab-login`) or use the **Connect Schwab** box on the dashboard.
+4. **Every 7 days** Schwab asks you to log in again (their rule). The app sends a phone alert a day before it expires.
+
+What you get on the dashboard, for the selected stock (updated every second):
+- **The ladder**: the top 10 bids and asks with shares and who posted them. Big orders (walls) are in bold, and the entry and stop prices are tagged.
+- **What the book is telling you**, in plain English: buyers or sellers stacked, big buyers and sellers (walls), thin price gaps, **hidden sellers/buyers** (an order that keeps refilling), walls that got **eaten** (a real breakout or breakdown) or **pulled** (likely fake), the real spread, and how many shares must trade to reach your entry.
+- **Every possibility from here**: what it means if the ask gets lifted, if the big seller gets eaten or keeps refilling or vanishes, if the bid wall holds or breaks, if nothing changes.
+- A new weighted checklist item, **"Order book with you (Level 2)"** (2 points). It fails if sellers are stacked, a hidden seller sits at the price, a big seller sits between the entry and +1R, or the spread is over 2%. When Level 2 isn't connected the item doesn't exist, so nothing changes for you.
+- The **real** bid and ask replace the IEX sample for the spread check, and BUY alerts get a "Level 2:" line.
+
+Also new for every stock: **"Why <signal>, and what would change it"**. It lists every reason the signal is what it is, and every way it can change (to BUY NOW, EXIT NOW, TOO LATE, NO TRADE...) with exact prices and volumes.
+
+`START_DEMO.bat` shows a fake order book, so you can see the panel when the market is closed.
+
+---
+
 ## 3. Keep it running 24/7 for free
 
 | Option | Cost | Dashboard online | Alerts | Needs a card | Effort |
@@ -73,11 +96,11 @@ By default you only get BUY alerts and their follow-ups (SELL HALF, EXIT NOW, TA
    sudo apt update && sudo apt install -y docker.io docker-compose-v2 git
    sudo usermod -aG docker $USER && newgrp docker
    sudo iptables -I INPUT -p tcp --dport 8765 -j ACCEPT && sudo netfilter-persistent save   # Oracle's Ubuntu firewall
-   mkdir -p ~/momentum-desk && cd ~/momentum-desk
+   mkdir -p ~/momentum-desk/data && sudo chown 1000:1000 ~/momentum-desk/data && cd ~/momentum-desk   # the app runs as user 1000 and saves here
    ```
 6. Copy the app from your PC (in a Windows terminal, in the app folder):
    ```bash
-   scp -i your-key.key -r config.py notifier.py momentum_scanner.py web requirements.txt Dockerfile docker-compose.yml .env ubuntu@YOUR_SERVER_IP:~/momentum-desk/
+   scp -i your-key.key -r config.py notifier.py level2.py momentum_scanner.py web requirements.txt Dockerfile docker-compose.yml .env ubuntu@YOUR_SERVER_IP:~/momentum-desk/
    ```
 7. On the server, edit `.env` (`nano .env`) and set **`DASHBOARD_PASSWORD=`** (required online) and `PUBLIC_URL=http://YOUR_SERVER_IP:8765`.
 8. Start it:
@@ -86,6 +109,9 @@ By default you only get BUY alerts and their follow-ups (SELL HALF, EXIT NOW, TA
    docker compose logs -f          # watch it start; Ctrl+C to leave (it keeps running)
    ```
    Your phone gets "Momentum Desk is online". Open `http://YOUR_SERVER_IP:8765` anywhere and log in with the password (any user name).
+
+9. Level 2: open the dashboard and use the **Connect Schwab** box (or copy `schwab_tokens.json` from your PC into `~/momentum-desk/data/`).
+10. **Stop the copy on your PC** (`UNINSTALL_AUTOSTART.bat`), or you get every alert twice and the two Level 2 streams can kick each other off.
 
 It restarts automatically after crashes and reboots. To update later, copy the new files again, then run `docker compose up -d --build`.
 No Docker? Use `deploy/momentum-desk.service` (instructions inside the file).
@@ -128,4 +154,4 @@ Set Windows **Sleep → Never** (while plugged in), or alerts stop while the PC 
 ## Limits (honest)
 - The free IEX feed sees about 2–3% of US volume. Volume ratios are consistent, but quotes and spreads are a sample.
 - Yahoo and Finviz may block cloud servers' IP addresses. If they do, float and short interest show "unknown" (half credit in the score) and everything else keeps working.
-- Rules can't see Level 2 or the tape. Always confirm in your broker.
+- Without Schwab connected, the rules can't see Level 2. With it, Level 2 shows orders, not trades: orders can be pulled in a split second and big players hide size. Always confirm in your broker.

@@ -352,6 +352,8 @@ class AlertManager:
         miss = [c[0] for c in s.get("checks", []) if c[1] is False and not c[2]]
         if miss:
             L.append("Missing: " + ", ".join(miss[:3]))
+        if s.get("book_line"):
+            L.append("Level 2: " + s["book_line"])
         if s.get("news"):
             L.append("News: " + s["news"][0]["h"][:120])
         return "\n".join(L)

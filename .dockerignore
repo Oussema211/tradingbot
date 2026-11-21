@@ -6,3 +6,4 @@ __pycache__/
 *.csv
 alert_state.json*
 *.bat
+schwab_tokens.json*

@@ -7,3 +7,4 @@ alert_state.json*
 old_versions/
 trades_state.json*
 trades_log.csv
+schwab_tokens.json*

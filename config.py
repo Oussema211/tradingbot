@@ -63,6 +63,12 @@ SEC = env("APCA_API_SECRET_KEY")
 FEED = env("ALPACA_FEED", "iex").lower()          # iex = free (partial market), sip = paid (full market)
 WATCH = [s.strip().upper() for s in env("WATCHLIST").split(",") if s.strip()]
 
+# ---- real-time Level 2 (Charles Schwab Trader API; free with a Schwab brokerage account) -----
+SCHWAB_APP_KEY = env("SCHWAB_APP_KEY")
+SCHWAB_APP_SECRET = env("SCHWAB_APP_SECRET")
+SCHWAB_CALLBACK = env("SCHWAB_CALLBACK_URL", "https://127.0.0.1")   # must match the app's callback exactly
+L2_MAX_SYMBOLS = int(env_float("L2_MAX_SYMBOLS", 12))               # order books streamed at once (top of the list)
+
 # ---- trading window (New York time) --------------------------------------
 TRADE_FROM = env_time("TRADE_FROM", "09:30")     # set 07:00 to include pre-market setups
 TRADE_UNTIL = env_time("TRADE_UNTIL", "11:00")
@@ -107,4 +113,5 @@ LOG_FILE = os.path.join(DATA_DIR, "signals_log.csv")
 ALERT_STATE_FILE = os.path.join(DATA_DIR, "alert_state.json")
 TRADES_FILE = os.path.join(DATA_DIR, "trades_state.json")
 TRADE_LOG = os.path.join(DATA_DIR, "trades_log.csv")
+SCHWAB_TOKEN_FILE = os.path.join(DATA_DIR, "schwab_tokens.json")   # your Schwab login: keep it private like .env
 WEB_FILE = os.path.join(HERE, "web", "index.html")

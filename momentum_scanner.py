@@ -22,7 +22,8 @@ HONEST LIMITS
     Relative volume compares IEX with its own 10-day history (consistent); full-market volume comes from Yahoo.
   * Yahoo and Finviz are public web pages, not official APIs: if they block or change, those fields show
     "unknown" and the rest keeps working.
-  * No real Level 2, no halt feed (halts are inferred from missing trades).
+  * Real Level 2 needs a free Schwab developer app + a Schwab brokerage account (see level2.py). Without it: no order book.
+  * No halt feed (halts are inferred from missing trades).
 """
 import os, re, sys, csv, json, math, time, random, socket, signal, logging, threading, webbrowser, hmac, base64
 import urllib.request, urllib.parse, urllib.error, http.cookiejar
@@ -32,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 import config as C
 from notifier import Notifier, AlertManager
+from level2 import Level2, login_cli as schwab_login
 
 log = logging.getLogger("desk")
 NY = C.NY
@@ -42,6 +44,7 @@ DATA = "https://data.alpaca.markets"
 PAPER = "https://paper-api.alpaca.markets/v2"   # used only for the market clock/calendar/asset names; no orders are ever sent
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 SEC_UA = "MomentumDesk/1.0 (personal research tool)"
+L2 = Level2(demo=DEMO)      # real-time order book (Schwab). Off until SCHWAB_APP_KEY is set
 
 # ---------------------------------------------------------------- helpers
 def http_get(url, params=None, headers=None):
@@ -407,6 +410,146 @@ def merged_news(inp, now):
     recent = [n for n in allv if ts(n) and now.timestamp() - ts(n) <= 18 * 3600]
     return allv[:10], recent
 
+# ---------------------------------------------------------------- explain every signal: what it means, why, what would change it
+MEANS = {
+    "BUY NOW": "The only time to buy: it broke out the right way and passed every MUST check.",
+    "BUY HALF": "A buy, at half size: it qualifies but with less margin than a full BUY.",
+    "HOLD": "You're in. The plan is frozen: same stop, same targets. Do nothing unless a rule below fires.",
+    "SELL HALF": "+1R reached: bank half, move the stop to your entry. The trade can no longer lose.",
+    "EXIT NOW": "Sell everything now. A rule closed the trade: a small loss or a locked gain, as planned.",
+    "CLOSED": "This trade is finished. The stock is only tradable again with a brand-new setup.",
+    "GET READY": "Heads-up only, NOT a buy. A setup is loaded; the buy comes only if it breaks out the right way.",
+    "WAIT": "No safe entry yet. Something specific is missing (listed below).",
+    "TOO LATE": "It already ran past the entry. Buying now means a far stop and little reward: don't chase.",
+    "NO TRADE": "Don't buy. A hard rule is broken (listed below).",
+}
+
+def explain_signal(x):
+    """Every reason the signal is what it is, and every way it can change (with prices). Returns dict(means, why, flip)."""
+    u = lambda v: "$%.2f" % v if v is not None else "-"
+    sig, plan, tr, p, vw = x["sig"], x["plan"], x["tr"], x["p"], x["vw"]
+    entry, stop, target, mx = x["entry"], x["stop"], x["target"], x["max_price"]
+    t1 = round(entry + (entry - stop), 2) if entry and stop else None
+    pace = int(1.5 * plan["pullv"]) if plan and plan.get("pullv") else None
+    ra, rr = x["res_above"], x["room_r"]
+    detail = {c[0]: c[3] for c in x["checks"]}
+    NEED = {
+        "Volume 3x+ normal": "relative volume of 3x normal or more",
+        "Above VWAP": ("price back above VWAP %s (now %s)" % (u(vw), u(p))) if vw else "not enough candles for VWAP yet",
+        "No offering / dilution": "no dilution: can't change today, the company is selling shares",
+        "Clean pullback pattern": ("the %s still there on the next scan (one-scan flickers are ignored)" % plan["setup"].lower()) if plan else
+            "a run-up of 3%+, then 1-12 calm candles that keep most of the gain, with price back within 3% of the high (or price testing the pre-market high)",
+        "Tight stop (8% or less)": ("a tighter pullback: the stop is %.1f%% away, 8%% or less is allowed" % x["risk_pct"]) if plan and x["risk_pct"] else
+            "a pattern first (the stop is the pullback low)",
+        "Room to run (1R+ to resistance)": ("a break above %s %s first (only %.1fR above the entry)" % (ra["label"].lower(), u(ra["price"]), rr))
+            if ra and rr is not None else "clear",
+        "Liquid ($1M+ traded today)": ("$1M+ traded today (now $%.2fM)" % (x["dollars"] / 1e6)) if x["dollars"] else "full-market volume (not loaded yet)",
+        "Breakout on a volume surge": ("the breakout minute needs %s+ shares (1.5x the pullback's pace)" % "{:,}".format(pace)) if pace else
+            "the breakout needs 1.5x the pullback volume",
+        "Breakout holding (no rejection wick)": "price must hold in the top half of the breakout candle (no slam from the high)",
+        "Real news catalyst": "a strong headline (FDA, contract, earnings, merger...)",
+        "Low float (under 20M)": "a float under 20M shares (fixed: can't change)",
+        "Buyers in control (last 10 min)": "more volume on green candles than red over the last 10 minutes (1.2x+)",
+        "5-minute trend up": "the 5-minute chart closing above its 9 EMA",
+        "Order book with you (Level 2)": "the Level 2 book not leaning against the trade (no stacked sellers, hidden seller or big seller before +1R)",
+        "This setup has an edge (past results)": "this setup type to stop losing in your trade history",
+        "Up 10%+ today": "the stock up 10%+ on the day",
+        "Trend up (9 EMA + MACD)": "price above the 9 EMA with MACD positive",
+        "Quiet pullback volume": "lighter volume on the pullback than on the run",
+        "Not stretched (<20% over VWAP)": "price within 20%% of VWAP %s" % u(vw),
+        "Market not weak": "SPY/QQQ/IWM to stop falling",
+        "Prime time (before 10:30 NY)": "before 10:30 New York (fixed: gets stricter as the morning goes)",
+    }
+    need = lambda n: "%s, now %s. Needs %s" % (n, detail.get(n, "?"), NEED.get(n, n.lower()))
+    why, flip = [], []
+    soft_txt = ("%d weighted point%s missing, at most %d allowed (missing: %s)" % (x["penalty"], "" if x["penalty"] == 1 else "s", x["allowed"],
+                ", ".join(s.lower() for s in x["soft_fail"]) or "none"))
+    book = x["book"] if x["book"] and x["book"].get("ok") else None
+    if book:
+        why.append("Level 2: " + book["headline"] + ".")
+
+    if sig in ("BUY NOW", "BUY HALF"):
+        why[:0] = ["It broke above the trigger with every MUST check passing (%d/%d checks)." % (x["passed"], len(x["checks"])), soft_txt.capitalize() + "."]
+        flip = [["HOLD", "Once filled (limit order, never above %s) the plan freezes: stop %s, half at %s, rest at %s." % (u(mx), u(stop), u(t1), u(target))],
+                ["TOO LATE", "If price is already above %s before you're filled. Cancel, don't chase." % u(mx)],
+                ["EXIT NOW", "If it trades at %s (stop), or falls under VWAP %s while under your entry." % (u(stop), u(vw))]]
+    elif sig in ("HOLD", "SELL HALF") and tr:
+        why[:0] = ["You're in at %s since %s NY (%s size). Stop now %s, target %s." % (u(tr["entry"]), tr["opened_ny"], tr["size"], u(tr["stop"]), u(tr["target"]))]
+        if sig == "SELL HALF" or tr["half"]:
+            why.append("+1R was hit at %s: half is sold and the stop sits at your entry, so the rest is a free trade." % u(tr["half_price"]))
+        else:
+            flip.append(["SELL HALF", "At %s (+1R): sell half and move the stop up to %s." % (u(tr["t1"]), u(tr["entry"]))])
+        flip += [["CLOSED (WIN)", "At %s (+2R target): sell the rest." % u(tr["target"])],
+                 ["EXIT NOW", "If it trades at %s (%s)." % (u(tr["stop"]), "breakeven stop" if tr["half"] else "stop-loss")],
+                 ["EXIT NOW", "If it falls under VWAP %s%s." % (u(vw), "" if tr["half"] else " while under your entry")]]
+        if not tr["half"]:
+            flip.append(["EXIT NOW", "If it is still under %s 10 minutes after the entry (no follow-through)." % u(tr["entry"])])
+        flip.append(["EXIT NOW", "At 15:55 New York, before the close."])
+    elif sig in ("EXIT NOW", "CLOSED") and tr:
+        why[:0] = ["Closed at %s: %s. Result: %s %+.1fR." % (u(tr["exit"]), tr["why"], tr["result"], tr["r"] or 0)]
+        if (tr["r"] or 0) < 0:
+            flip.append(["NO TRADE", "Not again today on this stock: never revenge-trade a loser."])
+        else:
+            flip.append(["GET READY", "Only after a brand-new pullback pattern forms (new trigger, new stop)."])
+        if x["losses"] >= C.MAX_LOSSES:
+            flip.append(["NO TRADE", "Daily loss limit reached (%d): no more BUY signals today on any stock." % x["losses"]])
+    elif sig == "GET READY":
+        why[:0] = ["%s loaded: trigger %s, stop %s (the pullback low)." % (plan["setup"], u(plan["trigger"]), u(stop)),
+                   "Every MUST check that can be judged before the breakout passes. " + soft_txt.capitalize() + "."]
+        flip = [["BUY NOW", "ALL of: price trades above %s; %s; %s; and it is still at or below %s." % (
+                    u(entry), NEED["Breakout on a volume surge"], NEED["Breakout holding (no rejection wick)"], u(mx))],
+                ["NO TRADE", "If it breaks out on weak volume or gets slammed from the high (a trap): you'll see NO TRADE instead of BUY."],
+                ["TOO LATE", "If it jumps straight past %s." % u(mx)],
+                ["WAIT", "If it drops under %s, or the pattern is more than 30 minutes old: the setup is cancelled." % u(plan["stop"])],
+                ["NO TRADE", "If it falls under VWAP %s, or dilution news / an SEC offering appears." % u(vw)]]
+    elif sig == "TOO LATE":
+        why[:0] = ["Price %s is past the max %s, or too close to the target to still offer 1.7:1." % (u(p), u(mx))]
+        flip = [["GET READY", "If it pulls back calmly, holds above VWAP %s and forms a new pattern (a new, higher trigger)." % u(vw)],
+                ["WAIT", "Meanwhile: never chase. Missing a move costs nothing."]]
+    elif sig == "NO TRADE":
+        why[:0] = ["Hard stop: " + b + "." for b in x["real_blocks"]] + ["Failed MUST: " + need(n) + "." for n in x["must_fail"]]
+        if not x["window_open"]:
+            why.append("Outside your trading window (%s-%s New York)." % (C.TRADE_FROM.strftime("%H:%M"), C.TRADE_UNTIL.strftime("%H:%M")))
+        if x["reason"] and x["reason"].startswith("not strong"):
+            why.append(soft_txt.capitalize() + ".")
+        for b in x["real_blocks"]:
+            if "dilution" in b or "offering" in b:
+                flip.append(["-", "Can't change today: the company is selling shares. Skip this stock."])
+            elif "daily limit" in b:
+                flip.append(["-", "Tomorrow. The daily loss limit protects your account: stop for today."])
+            elif "already" in b:
+                flip.append(["-", "Not today for this stock."])
+            elif "spread" in b:
+                flip.append(["WAIT", "If the real spread tightens under 2%."])
+            elif "too few" in b:
+                flip.append(["WAIT", "When it trades more (20+ one-minute candles today)."])
+            elif "halted" in b:
+                flip.append(["WAIT", "When trades resume and prints flow again."])
+        for n in x["must_fail"]:
+            if n != "No offering / dilution":
+                flip.append(["WAIT", "When: " + NEED.get(n, n.lower()) + "."])
+        if not x["window_open"] and not x["real_blocks"]:
+            flip.append(["WAIT", "When the trading window opens (%s New York)." % C.TRADE_FROM.strftime("%H:%M")])
+        if x["reason"] and x["reason"].startswith("not strong"):
+            flip.append(["BUY NOW", "On the next breakout, if the weighted misses drop to %d or fewer." % x["allowed"]])
+    else:   # WAIT
+        pend = x["must_pre"] if x["state"] != "TRIGGERED" else x["must_fail"]
+        why[:0] = ["Missing MUST: " + need(n) + "." for n in pend]
+        if not x["strong"]:
+            why.append("Not strong enough: " + soft_txt + ".")
+        if not x["window_open"]:
+            why.append("Outside your trading window (%s-%s New York)." % (C.TRADE_FROM.strftime("%H:%M"), C.TRADE_UNTIL.strftime("%H:%M")))
+        conds = ([NEED["Clean pullback pattern"]] if not plan and "Clean pullback pattern" not in pend else []) + [NEED.get(n, n.lower()) for n in pend]
+        if not x["strong"]:
+            conds.append("weighted misses at %d or fewer (fix any of: %s)" % (x["allowed"], ", ".join(s.lower() for s in x["soft_fail"][:4])))
+        if not x["window_open"]:
+            conds.append("the trading window open (%s New York)" % C.TRADE_FROM.strftime("%H:%M"))
+        flip = [["GET READY", "When: " + ("; ".join(dict.fromkeys(conds)) or "the pattern holds for another scan") + "."],
+                ["BUY NOW", "Only after GET READY: a break above the trigger on a volume surge that holds."],
+                ["NO TRADE", "If dilution news or an SEC offering appears, it falls apart, or the daily loss limit is hit."]]
+    uniq = lambda L: [v for i, v in enumerate(L) if v not in L[:i]]
+    return dict(means=MEANS.get(sig, ""), why=uniq(why), flip=uniq(flip))
+
 def analyze(inp, now, window_open, mood=None):
     s, bars, p = inp["sym"], inp["bars"], inp["price"]
     fund = inp.get("fund") or {}
@@ -476,6 +619,9 @@ def analyze(inp, now, window_open, mood=None):
     halted = bool(not DEMO and regular and idle is not None and idle >= 5)
 
     q = inp["quote"]
+    rq = L2.quote(s)             # the REAL best bid/ask from Schwab beats the IEX sample
+    if rq:
+        q, iex = rq, False
     spread = (q["ap"] - q["bp"]) / p * 100 if q["ap"] and q["bp"] and p and q["ap"] > q["bp"] else None
     kind = classify(news_recent)
     fl = fund["float"] / 1e6 if fund.get("float") else None
@@ -605,6 +751,10 @@ def analyze(inp, now, window_open, mood=None):
     yq0 = inp.get("yq") or {}
     fv0 = yq0.get("vol") if yq0.get("day") == now.date().isoformat() else None
     dollars = fv0 * p if fv0 else None
+    # Level 2: the live order book, read against this plan (None when not connected: then it never counts against the trade)
+    t1v = round(entry + (entry - stop), 2) if entry and stop else None
+    book = L2.read(s, dict(price=p, entry=entry, stop=stop, max_price=max_price, t1=t1v, vwap=vw)) if L2.enabled else None
+    bk = book["check"] if book and book.get("ok") else (None, "not connected" if not L2.public_status()["live"] else "no book yet")
     CK = []
     def ck(name, ok, must, detail, w=0):
         CK.append([name, None if ok is None else bool(ok), must, detail, w])
@@ -624,6 +774,8 @@ def analyze(inp, now, window_open, mood=None):
     ck("Low float (under 20M)", None if fl is None else fl < 20, False, "unknown" if fl is None else "%.1fM" % fl, 2)
     ck("Buyers in control (last 10 min)", None if press is None else press >= 1.2, False, "n/a" if press is None else "%.1fx up vs down volume" % press, 2)
     ck("5-minute trend up", tf5, False, {True: "yes", False: "no", None: "not enough data"}[tf5], 2)
+    if L2.enabled:
+        ck("Order book with you (Level 2)", bk[0], False, bk[1], 2)
     hs = SETUP_HIST.get(plan["setup"]) if plan else None
     if hs and hs["n"] >= 8:
         ck("This setup has an edge (past results)", hs["r"] > 0, False, "%dW/%dL, %+.1fR over %d trades" % (hs["w"], hs["n"] - hs["w"], hs["r"], hs["n"]), 2)
@@ -692,6 +844,10 @@ def analyze(inp, now, window_open, mood=None):
         entry, stop, target, max_price = tr["entry"], tr["stop"], tr["target"], tr["max_price"]
         sig, reason = trade_signal(tr, now)
     action = action_line(sig, reason, entry, stop, target, max_price, tr, p)
+    explain = explain_signal(dict(sig=sig, reason=reason, state=state, plan=plan, entry=entry, stop=stop, target=target, max_price=max_price,
+                                  tr=tr, p=p, vw=vw, rvol=rvol, risk_pct=risk_pct, room_r=room_r, res_above=res_above, dollars=dollars,
+                                  must_fail=must_fail, must_pre=must_pre, soft_fail=soft_fail, penalty=penalty, allowed=allowed, strong=strong,
+                                  real_blocks=real_blocks, window_open=window_open, checks=CK, passed=passed, book=book, losses=losses))
 
     # ---- tips: [tone, short title, one-line detail]. tone: bad = deal-breaker, good = in your favor, warn = be careful
     T = []
@@ -801,7 +957,8 @@ def analyze(inp, now, window_open, mood=None):
                 fund={k: fund.get(k) for k in ("loaded", "sources", "name", "country", "sector", "industry", "employees", "summary", "website",
                                                "mcap", "hi52", "lo52", "float", "float_src", "shares", "short_pct", "short_ratio",
                                                "inst_pct", "insider_pct", "earnings", "avg10")},
-                rules=R, news=news_all, news_kind=kind,
+                rules=R, news=news_all, news_kind=kind, explain=explain,
+                book_line=book["headline"] if book and book.get("ok") and book.get("fresh") else None,
                 candles=[[int(parse_t(b["t"]).timestamp() * 1000), round(b["o"], 4), round(b["h"], 4), round(b["l"], 4), round(b["c"], 4), b["v"]] for b in tail],
                 vwap_s=[v and round(v, 4) for v in vws[-60:]], ema_s=[round(v, 4) for v in emas[-60:]])
 
@@ -1270,8 +1427,12 @@ def scan_loop():
                 mood = market_mood()
             except Exception:
                 mood = None
-            stocks = [analyze(i, now, ms["window_open"], mood) for i in (fetch_demo() if DEMO else fetch_live())]
+            inputs = fetch_demo() if DEMO else fetch_live()
+            if DEMO:
+                L2.demo_prices({i["sym"]: i["price"] for i in inputs})
+            stocks = [analyze(i, now, ms["window_open"], mood) for i in inputs]
             stocks.sort(key=lambda x: (ORDER[x["signal"]], -x["score"]))
+            L2.watch([s["sym"] for s in stocks])     # stream the order books of the best stocks (open trades rank first)
             for s in stocks:
                 log_signal(s, now)
             try:
@@ -1293,6 +1454,7 @@ def scan_loop():
         with LOCK:
             RESULT["alerts"] = list(ALERTS.history)[:20]
             RESULT["notify"] = dict(channels=NOTIFIER.names, error=NOTIFIER.last_error, level=C.ALERT_LEVEL)
+            RESULT["l2"] = L2.public_status()
         if C.RUN_UNTIL and not DEMO:
             today = market_state(now).get("today")
             if now.time() >= C.RUN_UNTIL or today is None:
@@ -1352,9 +1514,39 @@ class H(BaseHTTPRequestHandler):
             with LOCK:
                 body = json.dumps(RESULT, default=str).encode()
             return self._send(200, body, "application/json")
+        if path == "/api/book":
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            sym = (q.get("sym") or [""])[0].upper()
+            if not re.fullmatch(r"[A-Z][A-Z0-9.]{0,9}", sym):
+                return self._send(400, b'{"error":"bad symbol"}', "application/json")
+            with LOCK:
+                s = next((x for x in RESULT["stocks"] if x["sym"] == sym), None)
+            ctx = {}
+            if s:
+                t1 = round(s["entry"] + (s["entry"] - s["stop"]), 2) if s.get("entry") and s.get("stop") else None
+                ctx = dict(price=s["price"], entry=s.get("entry"), stop=s.get("stop"), max_price=s.get("max_price"), t1=t1, vwap=s.get("vwap"))
+            body = L2.read(sym, ctx) if L2.enabled else dict(ok=False, sym=sym, status=L2.public_status(), why="Level 2 is not set up.")
+            return self._send(200, json.dumps(body, default=str).encode(), "application/json")
         if path in ("/", "/index.html"):
             return self._send(200, load_html().encode(), "text/html; charset=utf-8")
         self._send(404, b"Not found", "text/plain")
+
+    def do_POST(self):
+        """Only one action: finish the Schwab login from the dashboard (paste the address the browser landed on)."""
+        if not self._authorized():
+            return self._send(401, b"Password required", "text/plain", {"WWW-Authenticate": 'Basic realm="Momentum Desk", charset="UTF-8"'})
+        if self.path.split("?")[0] != "/api/schwab-login":
+            return self._send(404, b"Not found", "text/plain")
+        # JSON only: browsers can't send it cross-site without permission, so another website can't post here
+        n = int(self.headers.get("Content-Length") or 0)
+        if not self.headers.get("Content-Type", "").startswith("application/json") or not 0 < n <= 8192:
+            return self._send(400, b'{"error":"bad request"}', "application/json")
+        try:
+            L2.auth.exchange(json.loads(self.rfile.read(n)).get("url", ""))
+            out = dict(ok=True)
+        except Exception as e:
+            out = dict(ok=False, error=str(e)[:300])
+        self._send(200, json.dumps(out).encode(), "application/json")
 
     def log_message(self, *a):
         pass
@@ -1428,6 +1620,8 @@ def main():
         return telegram_setup()
     if "--test-alert" in sys.argv:
         return test_alert()
+    if "--schwab-login" in sys.argv:
+        return schwab_login()
     if C.RUN_UNTIL and not DEMO and datetime.now(NY).time() >= C.RUN_UNTIL:
         log.info("Started after RUN_UNTIL %s New York: nothing to do.", C.RUN_UNTIL.strftime("%H:%M"))
         return
@@ -1441,6 +1635,15 @@ def main():
         log.warning("The dashboard is reachable from other machines WITHOUT a password. Set DASHBOARD_PASSWORD in .env.")
     log.info("Alerts: %s", ", ".join(NOTIFIER.names) or "none configured (dashboard only). See README.md > Phone alerts.")
     startup_check()
+    if DEMO:
+        log.info("Level 2: demo order books (fake).")
+    elif not L2.auth.configured:
+        log.info("Level 2: off. Add SCHWAB_APP_KEY / SCHWAB_APP_SECRET to .env for the real order book (README.md > Level 2).")
+    elif not L2.auth.connected:
+        log.warning("Level 2: Schwab login needed. Run: python momentum_scanner.py --schwab-login (or use the dashboard).")
+    else:
+        log.info("Level 2: Schwab connected (login valid %.1f more days).", L2.auth.days_left())
+    L2.start(STOP, NOTIFIER)
     threading.Thread(target=scan_loop, daemon=True, name="scan").start()
     if not DEMO:
         threading.Thread(target=enrich_loop, daemon=True, name="enrich").start()
