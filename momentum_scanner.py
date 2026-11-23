@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 import config as C
 from notifier import Notifier, AlertManager
 from level2 import Level2, login_cli as schwab_login
+from yahoo_feed import YahooFeed
 
 log = logging.getLogger("desk")
 NY = C.NY
@@ -45,6 +46,7 @@ PAPER = "https://paper-api.alpaca.markets/v2"   # used only for the market clock
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 SEC_UA = "MomentumDesk/1.0 (personal research tool)"
 L2 = Level2(demo=DEMO)      # real-time order book (Schwab). Off until SCHWAB_APP_KEY is set
+YF = YahooFeed(UA, NY, enabled=C.YAHOO_CANDLES and not DEMO)   # full-market candles; IEX is the per-stock fallback
 
 # ---------------------------------------------------------------- helpers
 def http_get(url, params=None, headers=None):
@@ -599,7 +601,9 @@ def analyze(inp, now, window_open, mood=None):
             target = round(entry + 2 * (entry - stop), 2)
             # never chase: the highest price still worth paying (a quarter of the risk above the entry)
             max_price = round(entry + max(0.03, 0.25 * (entry - stop)), 2)
-            if state == "TRIGGERED" and (p > max_price or (p > stop and (target - p) / (p - stop) < 1.7)):
+            # 1.4 matches the max price: at entry + 0.25R the 2R target still pays (2 - 0.25) / (1 + 0.25) = 1.4x the risk.
+            # (It was 1.7, which silently capped the chase at ~0.1R: fast small caps were always "too late" by the next scan.)
+            if state == "TRIGGERED" and (p > max_price or (p > stop and (target - p) / (p - stop) < 1.4)):
                 state = "LATE"
         else:
             plan = entry = stop = None
@@ -770,7 +774,9 @@ def analyze(inp, now, window_open, mood=None):
     ck("Breakout on a volume surge", bvol, True, "yes" if bvol else "checked at the breakout")
     ck("Breakout holding (no rejection wick)", hold_ok, True, "yes" if hold_ok else "sellers slammed the breakout")
     # KEY (2 points each)
-    ck("Real news catalyst", kind == "strong", False, {"strong": "strong", "weak": "weak news", "dilution": "dilution", "none": "no news"}[kind], 2)
+    # weak news is still news (1 point); no news at all costs the full 2
+    ck("Real news catalyst", kind == "strong", False, {"strong": "strong", "weak": "weak news", "dilution": "dilution", "none": "no news"}[kind],
+       1 if kind == "weak" else 2)
     ck("Low float (under 20M)", None if fl is None else fl < 20, False, "unknown" if fl is None else "%.1fM" % fl, 2)
     ck("Buyers in control (last 10 min)", None if press is None else press >= 1.2, False, "n/a" if press is None else "%.1fx up vs down volume" % press, 2)
     ck("5-minute trend up", tf5, False, {True: "yes", False: "no", None: "not enough data"}[tf5], 2)
@@ -945,7 +951,7 @@ def analyze(inp, now, window_open, mood=None):
         why = "avoid: " + real_blocks[0]
 
     tail = bars[-60:]
-    return dict(sym=s, price=round(p, 2), chg=round(chg, 1), rvol=round(rvol, 1), float_m=fl, spread=None if spread is None else round(spread, 2),
+    return dict(sym=s, src=inp.get("src", "demo" if DEMO else "iex"), price=round(p, 2), chg=round(chg, 1), rvol=round(rvol, 1), float_m=fl, spread=None if spread is None else round(spread, 2),
                 spread_iex=iex, vwap=vw and round(vw, 2), ema9=e9 and round(e9, 2), score=score, grade=grade, signal=sig, state=state,
                 action=action, reason=reason, checks=CK, passed=passed, total=sum(1 for c in CK if c[1] is not None), penalty=penalty, allowed=allowed,
                 trade=tr and {k: tr.get(k) for k in TRADE_PUBLIC},
@@ -1285,15 +1291,38 @@ def fetch_live():
     names = [c[1] for c in cand]
     WANT.clear(); WANT.update(names)
     update_bars(names); daily_load(names); hist_load(names); nm = news_map(names)
+    # full-market candles from Yahoo: loaded setups and open trades refresh fastest
+    # (polite outside the trading window, so Yahoo doesn't block the server: 30 min before to 30 min after it = full speed)
+    t0 = (datetime.combine(now.date(), C.TRADE_FROM) - timedelta(minutes=30)).time()
+    t1 = (datetime.combine(now.date(), C.TRADE_UNTIL) + timedelta(minutes=30)).time()
+    if t0 <= now.time() < t1:
+        YF.refresh(names, hot=set(STATE) | keep_syms)
+    else:
+        YF.refresh(names, hot=keep_syms, max_calls=4, fast=60, slow=300)
     out = []
     for chg, s, sn, prev in cand:
-        if not BARS.get(s):
+        lt = sn.get("latestTrade") or {}
+        price, last_t = lt["p"], lt.get("t")
+        y = YF.data(s)
+        if y:
+            # candles, same-time volume history and average volume all from Yahoo, so relative volume compares like with like
+            bars, avg_vol, hist, daily, src = y["bars"], y["avg_vol"], y["hist"], y["daily"], "yahoo"
+            yb = bars[-1]
+            yt = min(parse_t(yb["t"]) + timedelta(seconds=60), datetime.now(NY))
+            try:
+                newer = not last_t or yt > parse_t(last_t)
+            except Exception:
+                newer = True
+            if newer:          # IEX's last print is older than the full tape (thin stock on IEX): use the full-tape price
+                price, last_t = yb["c"], yt.astimezone(NY).isoformat()
+        elif BARS.get(s):
+            bars, avg_vol, hist, daily, src = BARS[s], DAILY.get(s, (0, 0))[1], HIST.get(s, (0, []))[1], DAYBARS.get(s, []), "iex"
+        else:
             continue
         q = sn.get("latestQuote") or {}
-        out.append(dict(sym=s, price=sn["latestTrade"]["p"], prev_close=prev, bars=BARS[s], avg_vol=DAILY.get(s, (0, 0))[1],
-                        hist=HIST.get(s, (0, []))[1], daily=DAYBARS.get(s, []), fund=fundamentals(s), yq=YQ.get(s), news=nm.get(s, []),
-                        quote=dict(ap=q.get("ap"), bp=q.get("bp"), **{"as": q.get("as"), "bs": q.get("bs")}),
-                        last_t=(sn.get("latestTrade") or {}).get("t")))
+        out.append(dict(sym=s, price=price, prev_close=prev, bars=bars, avg_vol=avg_vol, hist=hist, daily=daily, src=src,
+                        fund=fundamentals(s), yq=YQ.get(s), news=nm.get(s, []),
+                        quote=dict(ap=q.get("ap"), bp=q.get("bp"), **{"as": q.get("as"), "bs": q.get("bs")}), last_t=last_t))
     return out
 
 LOGGED = set()
@@ -1443,6 +1472,14 @@ def scan_loop():
             ALERTS.on_error(now, None)
             HEALTH["last_ok"] = time.time()
             pub = {k: v for k, v in ms.items() if k != "today"}
+            ny_ = sum(1 for s in stocks if s.get("src") == "yahoo")
+            if not DEMO:
+                pub["feed"] = "yahoo" if stocks and ny_ == len(stocks) else "mixed" if ny_ else FEED
+                pub["feed_counts"] = dict(yahoo=ny_, total=len(stocks))
+                pub["yahoo"] = YF.status()
+                if YF.enabled and stocks and not ny_ and ms.get("window_open") and not YF.available():
+                    ALERTS.data_warning(now, "Yahoo candles are blocked right now, so the scanner is on the IEX backup "
+                                             "(a small sample of the market). Signals may be missed until Yahoo comes back.")
             with LOCK:
                 RESULT.update(pub)
                 RESULT.update(stocks=stocks[:12], error=None, updated=now.strftime("%H:%M:%S"), mood=mood, trades=trade_summary(now))

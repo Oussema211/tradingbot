@@ -222,9 +222,15 @@ class AlertManager:
         ch = ", ".join(self.n.names) or "none (dashboard only)"
         self.n.send("Momentum Desk is online",
                     "Mode: %s · data feed: %s\nAlerts: %s (%s)\nTrading window: %s-%s New York time." % (
-                        "DEMO" if C.DEMO else "LIVE", "synthetic" if C.DEMO else C.FEED.upper(), ch,
+                        "DEMO" if C.DEMO else "LIVE",
+                        "synthetic" if C.DEMO else ("Yahoo full volume (Alpaca %s backup)" % C.FEED.upper()) if C.YAHOO_CANDLES else C.FEED.upper(), ch,
                         "GET READY + BUY" if C.ALERT_LEVEL == "ready" else "BUY only",
                         C.TRADE_FROM.strftime("%H:%M"), C.TRADE_UNTIL.strftime("%H:%M")), priority=2, tags=["rocket"])
+
+    def data_warning(self, now, text):
+        """Once a day at most: the full-market candles stopped and the scanner fell back to the IEX sample."""
+        self._new_day(now.date())
+        self._emit(now.date().isoformat() + ":data_fallback", "market", "Data warning: on backup feed", text, 3, ["warning"])
 
     def on_error(self, now, err):
         if err:

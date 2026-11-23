@@ -110,7 +110,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
 <body>
 <header class="band">
  <div><div class="brand">Momentum<i>.</i>Desk</div><div class="meta" id="meta">Connecting...</div></div>
- <div class="pills"><span class="pill" id="mode">-</span><span class="pill" id="sess">-</span><span class="pill" id="win">-</span><span class="pill" id="l2pill" title="Real-time order book (Schwab)">-</span><span class="pill" id="push" title="Phone notifications sent by the server">-</span><button id="snd">Turn on browser alerts</button></div>
+ <div class="pills"><span class="pill" id="mode">-</span><span class="pill" id="sess">-</span><span class="pill" id="feedpill" title="Where the candles and volume come from">-</span><span class="pill" id="win">-</span><span class="pill" id="l2pill" title="Real-time order book (Schwab)">-</span><span class="pill" id="push" title="Phone notifications sent by the server">-</span><button id="snd">Turn on browser alerts</button></div>
 </header>
 <div class="err" id="err" hidden></div>
 <section class="action" id="act" style="--c:var(--gold)"><div><div class="big" id="actBig">Connecting...</div><div class="sub" id="actSub"></div></div><div class="clock" id="clk"></div></section>
@@ -415,6 +415,7 @@ function draw(){
  const demo=data.mode==='DEMO';
  $('mode').textContent=demo?'DEMO · fake data':'LIVE DATA · 4 SOURCES';$('mode').className='pill live'+(demo?' off':'');
  $('sess').textContent=data.session||'-';
+ {const fc=data.feed_counts||{},f=data.feed,full=f==='yahoo'||f==='sip';$('feedpill').textContent=demo?'Candles · fake':f==='yahoo'?'Candles · full volume (Yahoo)':f==='mixed'?'Candles · full volume '+fc.yahoo+'/'+fc.total:f==='sip'?'Candles · full market (SIP)':'Candles · IEX sample only';$('feedpill').className='pill'+(full||demo?' live':' off');$('feedpill').title=(data.yahoo&&data.yahoo.last_error?'Last Yahoo error: '+data.yahoo.last_error:'Where the candles and volume come from')}
  $('win').textContent=(data.window_open?'Window open · ':'Window · ')+hm(data.win_start)+'-'+hm(data.win_end)+' your time';$('win').className='pill'+(data.window_open?'':' off');
  $('meta').textContent=data.updated?'Updated '+data.updated+' · refreshes by itself':'Connecting...';
  let em=data.error||'';if(/HTTP (401|403)/.test(em))em+=' (check your API key and secret)';

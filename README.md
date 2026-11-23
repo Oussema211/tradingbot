@@ -100,7 +100,7 @@ Also new for every stock: **"Why <signal>, and what would change it"**. It lists
    ```
 6. Copy the app from your PC (in a Windows terminal, in the app folder):
    ```bash
-   scp -i your-key.key -r config.py notifier.py level2.py momentum_scanner.py web requirements.txt Dockerfile docker-compose.yml .env ubuntu@YOUR_SERVER_IP:~/momentum-desk/
+   scp -i your-key.key -r config.py notifier.py level2.py yahoo_feed.py momentum_scanner.py replay.py web requirements.txt Dockerfile docker-compose.yml .env ubuntu@YOUR_SERVER_IP:~/momentum-desk/
    ```
 7. On the server, edit `.env` (`nano .env`) and set **`DASHBOARD_PASSWORD=`** (required online) and `PUBLIC_URL=http://YOUR_SERVER_IP:8765`.
 8. Start it:
@@ -130,6 +130,19 @@ Set Windows **Sleep → Never** (while plugged in), or alerts stop while the PC 
 
 ---
 
+## Full-market candles (Yahoo) and the Replay tool
+
+**Candles and volume now come from Yahoo Finance (full market, free).** The free Alpaca feed is IEX only, about 2–3% of trading: on 2026-11-23 it saw 28,331 BNAI shares in the first 90 minutes, while the real number was 15.1 million. Volume checks, VWAP and pullback patterns now use the full tape. Alpaca IEX stays on as the automatic backup, per stock. The dashboard pill shows which one is live ("Candles · full volume" or "IEX sample only"). If Yahoo blocks the server during the window, you get one Telegram warning. To turn it off: `YAHOO_CANDLES=0`.
+
+**Replay any day through the real rules** (uses Alpaca's free full-market history, which is free once it's 15+ minutes old; it never touches your live bot's files):
+```bash
+python replay.py                                        # today's top gainers, after the window
+python replay.py --date 2026-11-20 --symbols EVH,GAP    # a past day (name the stocks)
+python replay.py --feed iex                             # what the old IEX-only bot would have seen
+python replay.py --verbose --csv day.csv                # every signal change, saved to a file
+```
+It prints the trades the bot would have taken (entry, stop, exit, result in R) and, for every stock, the rules that blocked it most. Use it before changing any rule.
+
 ## 4. What changed in this version
 
 **More accurate signals**
@@ -152,6 +165,6 @@ Set Windows **Sleep → Never** (while plugged in), or alerts stop while the PC 
 - `signals_log.csv` now also records grade and max price. The old file is kept as `signals_log_old_<date>.csv`.
 
 ## Limits (honest)
-- The free IEX feed sees about 2–3% of US volume. Volume ratios are consistent, but quotes and spreads are a sample.
+- Candles come from Yahoo (full volume), but quotes and spreads are still the IEX sample. If Yahoo is blocked, the bot falls back to IEX (about 2–3% of US volume) and signals get rarer.
 - Yahoo and Finviz may block cloud servers' IP addresses. If they do, float and short interest show "unknown" (half credit in the score) and everything else keeps working.
 - Without Schwab connected, the rules can't see Level 2. With it, Level 2 shows orders, not trades: orders can be pulled in a split second and big players hide size. Always confirm in your broker.

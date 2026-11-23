@@ -62,6 +62,8 @@ KEY = env("APCA_API_KEY_ID")
 SEC = env("APCA_API_SECRET_KEY")
 FEED = env("ALPACA_FEED", "iex").lower()          # iex = free (partial market), sip = paid (full market)
 WATCH = [s.strip().upper() for s in env("WATCHLIST").split(",") if s.strip()]
+# Candles + volume from Yahoo (full market, free). Alpaca IEX stays on as the automatic backup. 0 = IEX only.
+YAHOO_CANDLES = env_bool("YAHOO_CANDLES", True)
 
 # ---- real-time Level 2 (Charles Schwab Trader API; free with a Schwab brokerage account) -----
 SCHWAB_APP_KEY = env("SCHWAB_APP_KEY")
