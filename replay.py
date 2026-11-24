@@ -11,8 +11,8 @@ Data: Alpaca's full-market SIP history (free on the Basic plan for anything olde
 candles your own chart shows. Nothing here can touch your live bot: it writes only to a temporary folder.
 
 Honest limits:
-  * The live bot scans every 10 seconds; the replay checks once per completed 1-minute candle (the pattern has to be
-    there at a candle close). Fills are assumed at the bot's own limit rules.
+  * The live bot scans every 3 seconds; the replay walks each candle's likely path in --scan second steps (the real
+    tick order inside a minute is unknown). Fills are assumed at the bot's own limit rules.
   * Float, short interest and SEC filings are today's values (the free sources have no history).
   * Without --symbols on a past date there is no free "top gainers of that day" list, so name the stocks.
 """
@@ -25,6 +25,7 @@ ap.add_argument("--date", help="YYYY-MM-DD (New York). Default: today")
 ap.add_argument("--symbols", help="comma separated. Default: today's top gainers (today only)")
 ap.add_argument("--feed", default="sip", choices=["sip", "iex"], help="sip = full market (default), iex = free sample")
 ap.add_argument("--verbose", action="store_true")
+ap.add_argument("--scan", type=int, default=3, help="seconds between the live bot's scans (default 3, as live)")
 ap.add_argument("--csv", help="also write every signal change to this CSV file")
 args = ap.parse_args()
 
@@ -197,7 +198,7 @@ def main():
             i = len(base)
             cur = today[s][i] if i < len(today.get(s, [])) and tt[s][i] == bs else None
             # the live bot scans every 10 s: walk the candle's likely path (green: open-low-high-close, red: open-high-low-close)
-            path = sample_path(cur) if cur else [None]
+            path = sample_path(cur, max(1, 60 // args.scan)) if cur else [None]
             r = None
             for k, px in enumerate(path):
                 t = bs + timedelta(seconds=59 if px is None else int(60 * (k + 1) / len(path)) - 1)

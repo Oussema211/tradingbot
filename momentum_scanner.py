@@ -267,6 +267,7 @@ def enrich_loop():
             log.exception("loop error")
         time.sleep(1.5)
 
+FLOAT_LOCK = {}     # sym -> (date, float, source): float is a fixed fact, so the first value seen today is kept
 def fundamentals(s):
     e = ENRICH.get(s) or {}
     y, f = e.get("y") or {}, e.get("fv") or {}
@@ -277,6 +278,12 @@ def fundamentals(s):
             if d.get(k) not in (None, 0, "", "-"):
                 out[k], out[k + "_src"] = d[k], name
                 break
+    d0 = datetime.now(NY).date()
+    fl = FLOAT_LOCK.get(s)
+    if fl and fl[0] == d0:
+        out["float"], out["float_src"] = fl[1], fl[2]     # never flips between Yahoo and Finviz during the day
+    elif out["float"]:
+        FLOAT_LOCK[s] = (d0, out["float"], out["float_src"])
     out["name"] = y.get("name") or ASSETS.get(s) or None
     for k in ("country", "sector", "industry", "employees", "summary", "website", "hi52", "lo52", "avg10"):
         out[k] = y.get(k)
@@ -365,7 +372,7 @@ def detect(bars, p, now):
             runv = sum(b["v"] for b in look[max(0, hi - 2):hi + 1]) / min(3, hi + 1)
             pullv = sum(b["v"] for b in after) / len(after)
             return dict(setup="Micro pullback" if len(after) <= 3 else "Bull flag" if len(after) <= 6 else "Flat-top breakout", state="ARMED",
-                        trigger=sw, stop=pl, lightvol=pullv < runv, pullv=pullv,
+                        trigger=sw, stop=pl, lightvol=pullv < runv, pullv=pullv, nafter=len(after),
                         note="It ran up %.0f%%, then paused for %d minute%s and gave back %d%% of the run on %s volume." % (
                             run / base * 100, len(after), "" if len(after) == 1 else "s", depth * 100, "light (good)" if pullv < runv else "heavy (less good)"))
     if now.time() >= dtime(9, 30):
@@ -581,6 +588,13 @@ def analyze(inp, now, window_open, mood=None):
         same = st and "fired" not in st and abs(st["trigger"] - det["trigger"]) / det["trigger"] < 0.01
         STATE[s] = dict(det, since=st["since"] if same else time.time(), seen=st.get("seen", 1) + 1 if same else 1)
         state, plan = "ARMED", STATE[s]
+    elif not st and len(bars) >= 11 and bars[-1]["h"] > max(b["h"] for b in bars[-26:-1]):
+        # the breakout candle is live but the pullback was never seen (it formed and broke between two scans):
+        # rebuild the pattern as it was at the last candle close. The price limits below still stop any chasing.
+        prev = detect(bars[:-1], bars[-2]["c"], now)
+        if prev and prev.get("nafter") and p >= prev["trigger"]:
+            STATE[s] = st = dict(prev, since=time.time(), seen=2, fired=time.time())
+            state, plan = "TRIGGERED", st
     elif st:
         if p < st["stop"] or time.time() - st["since"] > 1800:
             STATE.pop(s, None)
@@ -732,7 +746,8 @@ def analyze(inp, now, window_open, mood=None):
 
     # ---- THE DECISION: a strict checklist. Every MUST item has to pass, or there is no trade.
     ext = (p / vw - 1) * 100 if vw else None
-    stable = bool(plan) and plan.get("seen", 1) >= 2
+    # one-scan flickers are not setups, but a pullback made of 2+ candles is real even if the breakout came on the next scan
+    stable = bool(plan) and (plan.get("seen", 1) >= 2 or plan.get("nafter", 0) >= 2)
     def vpace(b):
         try:
             el = (now - parse_t(b["t"]).astimezone(NY)).total_seconds()
@@ -795,6 +810,10 @@ def analyze(inp, now, window_open, mood=None):
     must_fail = [c[0] for c in CK if c[2] and c[1] is False]
     must_pre = [x for x in must_fail if x not in ("Breakout on a volume surge", "Breakout holding (no rejection wick)")]
     soft_fail = [c[0] for c in sorted(CK, key=lambda c: -c[4]) if not c[2] and c[1] is False]
+    # float never changes during the day: it still counts, but it is never "what you are waiting for"
+    live_fail = [x for x in soft_fail if x != "Low float (under 20M)"]
+    weak_txt = "not strong enough: missing " + (", ".join(x.lower() for x in live_fail[:3]) or "too many points") + (
+        " (float %.0fM is big, so everything else must line up)" % fl if fl is not None and "Low float (under 20M)" in soft_fail else "")
     penalty = sum(c[4] for c in CK if not c[2] and c[1] is False)
     allowed = 1 if hs and hs["n"] >= 8 and hs["r"] <= 0 else 2     # a setup that has been losing gets stricter
     strong = penalty <= allowed
@@ -812,7 +831,12 @@ def analyze(inp, now, window_open, mood=None):
     elif n_here >= C.MAX_TRADES_PER_STOCK:
         real_blocks.append("already traded %s %d times today" % (s, n_here))
     reason = None
-    if state == "TRIGGERED":
+    # confirmation: with scans every few seconds the first tick over the trigger is often a fake-out that gets slammed.
+    # The price must still be over the entry 5+ seconds after the break (2 scans) before a BUY is called.
+    confirming = state == "TRIGGERED" and plan and time.time() - plan.get("fired", 0) < 5
+    if confirming and not real_blocks and window_open and not must_pre and strong:
+        sig, reason = "GET READY", "breakout started: checking that it holds above $%.2f" % entry
+    elif state == "TRIGGERED":
         if real_blocks:
             sig, reason = "NO TRADE", real_blocks[0]
         elif not window_open:
@@ -822,7 +846,7 @@ def analyze(inp, now, window_open, mood=None):
         elif strong:
             sig = "BUY NOW"
         else:
-            sig, reason = "NO TRADE", "not strong enough: missing " + ", ".join(x.lower() for x in soft_fail[:3])
+            sig, reason = "NO TRADE", weak_txt
     elif state == "ARMED":
         if real_blocks:
             sig, reason = "NO TRADE", real_blocks[0]
@@ -830,7 +854,7 @@ def analyze(inp, now, window_open, mood=None):
             sig = "GET READY"
         else:
             sig = "WAIT"
-            reason = ("waiting for: " + must_pre[0].lower()) if must_pre else "not strong enough: missing " + ", ".join(x.lower() for x in soft_fail[:3]) \
+            reason = ("waiting for: " + must_pre[0].lower()) if must_pre else weak_txt \
                 if not strong else "outside the trading window"
     elif state == "LATE" and not real_blocks:
         sig, reason = "TOO LATE", "it already ran past the entry"
@@ -848,7 +872,7 @@ def analyze(inp, now, window_open, mood=None):
     since_close = now.timestamp() - tr["closed"] if tr and tr.get("closed") else None
     if tr and (since_close is None or since_close < 180 or (since_close < 1800 and sig in ("WAIT", "NO TRADE", "TOO LATE"))):
         entry, stop, target, max_price = tr["entry"], tr["stop"], tr["target"], tr["max_price"]
-        sig, reason = trade_signal(tr, now)
+        sig, reason = trade_signal(tr, now, p)
     action = action_line(sig, reason, entry, stop, target, max_price, tr, p)
     explain = explain_signal(dict(sig=sig, reason=reason, state=state, plan=plan, entry=entry, stop=stop, target=target, max_price=max_price,
                                   tr=tr, p=p, vw=vw, rvol=rvol, risk_pct=risk_pct, room_r=room_r, res_above=res_above, dollars=dollars,
@@ -1105,8 +1129,12 @@ def manage_trade(tr, bars, p, vw, now):
         if changed:
             _trades_save()
 
-def trade_signal(tr, now):
+def trade_signal(tr, now, p=None):
     nowts = now.timestamp()
+    # keep showing BUY for the first 90 s while it can still be bought at or under the max price,
+    # so you actually SEE the buy (it used to flip to HOLD in the same scan, before anyone could read it)
+    if not tr.get("closed") and not tr["half"] and nowts - tr["opened"] < 90 and (p is None or p <= tr["max_price"]):
+        return ("BUY HALF" if tr.get("size") == "half" else "BUY NOW"), None
     if tr.get("closed"):
         if nowts - tr["closed"] < 180 and "target" not in tr["why"]:
             return "EXIT NOW", tr["why"]
@@ -1252,19 +1280,24 @@ def prev_close_of(sn, now):
         return db.get("c")
     return pdb.get("c")
 
+MOVERS = [0, set()]
 def fetch_live():
     now = datetime.now(NY)
     keep_syms = set(WATCH) | {t["sym"] for t in trades_today(now) if not t.get("closed")}
     syms = set(keep_syms)
-    mv = alp("/v1beta1/screener/stocks/movers", top=50)
-    for g in mv.get("gainers", []):
-        if 1.5 <= g.get("price", 0) <= 25 and g.get("percent_change", 0) >= 8:
-            syms.add(g["symbol"])
-    try:
-        for a in alp("/v1beta1/screener/stocks/most-actives", by="volume", top=50).get("most_actives", []):
-            syms.add(a["symbol"])
-    except Exception:
-        pass
+    if time.time() - MOVERS[0] > 15:      # the movers lists change slowly: refresh every 15 s, prices every scan
+        found = set()
+        mv = alp("/v1beta1/screener/stocks/movers", top=50)
+        for g in mv.get("gainers", []):
+            if 1.5 <= g.get("price", 0) <= 25 and g.get("percent_change", 0) >= 8:
+                found.add(g["symbol"])
+        try:
+            for a in alp("/v1beta1/screener/stocks/most-actives", by="volume", top=50).get("most_actives", []):
+                found.add(a["symbol"])
+        except Exception:
+            pass
+        MOVERS[0], MOVERS[1] = time.time(), found
+    syms |= MOVERS[1]
     syms = {s for s in syms if "." not in s or s in keep_syms}
     if not syms:
         return []
@@ -1296,7 +1329,7 @@ def fetch_live():
     t0 = (datetime.combine(now.date(), C.TRADE_FROM) - timedelta(minutes=30)).time()
     t1 = (datetime.combine(now.date(), C.TRADE_UNTIL) + timedelta(minutes=30)).time()
     if t0 <= now.time() < t1:
-        YF.refresh(names, hot=set(STATE) | keep_syms)
+        YF.refresh(names, hot=set(STATE) | keep_syms, max_calls=10, fast=3, slow=12, wait=2.5)
     else:
         YF.refresh(names, hot=keep_syms, max_calls=4, fast=60, slow=300)
     out = []
@@ -1319,11 +1352,26 @@ def fetch_live():
             bars, avg_vol, hist, daily, src = BARS[s], DAILY.get(s, (0, 0))[1], HIST.get(s, (0, []))[1], DAYBARS.get(s, []), "iex"
         else:
             continue
+        bars = live_candle(bars, price, last_t)
         q = sn.get("latestQuote") or {}
         out.append(dict(sym=s, price=price, prev_close=prev, bars=bars, avg_vol=avg_vol, hist=hist, daily=daily, src=src,
                         fund=fundamentals(s), yq=YQ.get(s), news=nm.get(s, []),
                         quote=dict(ap=q.get("ap"), bp=q.get("bp"), **{"as": q.get("as"), "bs": q.get("bs")}), last_t=last_t))
     return out
+
+def live_candle(bars, price, last_t):
+    """Put the newest trade price into the current 1-minute candle, so the patterns see the move NOW and not when the
+    candle feed catches up (the candle sources lag by several seconds)."""
+    if not bars or not price or not last_t:
+        return bars
+    try:
+        lt, bt = parse_t(last_t), parse_t(bars[-1]["t"])
+    except Exception:
+        return bars
+    if not (bt <= lt < bt + timedelta(seconds=60)):
+        return bars
+    b = bars[-1]
+    return bars[:-1] + [dict(b, h=max(b["h"], price), l=min(b["l"], price), c=price)]
 
 LOGGED = set()
 LOG_COLS = ["date", "time_ny", "symbol", "signal", "score", "grade", "setup", "price", "entry", "max_price", "stop", "target",
