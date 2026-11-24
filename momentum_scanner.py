@@ -35,6 +35,7 @@ import config as C
 from notifier import Notifier, AlertManager
 from level2 import Level2, login_cli as schwab_login
 from yahoo_feed import YahooFeed
+import pillars as PIL
 
 log = logging.getLogger("desk")
 NY = C.NY
@@ -388,18 +389,7 @@ def detect(bars, p, now):
 STATE = {}
 ORDER = {"EXIT NOW": 0, "SELL HALF": 0, "BUY NOW": 1, "BUY HALF": 2, "HOLD": 3, "GET READY": 4, "WAIT": 5, "TOO LATE": 6,
          "CLOSED": 7, "NO TRADE": 8}
-STRONG = ("fda", "approval", "approved", "phase", "trial", "merger", "acquisition", "acquire", "contract", "partnership", "agreement",
-          "earnings", "revenue", "guidance", "patent", "clearance", "designation", "award", "launch", "breakthrough", "upgrade", "buyout", "collaboration")
-DILUTION = ("offering", "registered direct", "private placement", "reverse split", "shelf", "dilution", "warrants", "at-the-market", "atm program", "convertible")
 RISKY_COUNTRIES = ("China", "Hong Kong", "Macau", "Malaysia", "Singapore")
-
-def classify(news):
-    if not news:
-        return "none"
-    heads = " ".join(n["h"].lower() for n in news[:3])
-    if any(w in heads for w in DILUTION):
-        return "dilution"
-    return "strong" if any(w in heads for w in STRONG) else "weak"
 
 def merged_news(inp, now):
     """Alpaca (Benzinga) news + Finviz headlines, newest first, without duplicates. 'recent' = last 18 hours."""
@@ -641,7 +631,9 @@ def analyze(inp, now, window_open, mood=None):
     if rq:
         q, iex = rq, False
     spread = (q["ap"] - q["bp"]) / p * 100 if q["ap"] and q["bp"] and p and q["ap"] > q["bp"] else None
-    kind = classify(news_recent)
+    # the catalyst is graded by type (FDA > contract > vague PR), freshness and SEC confirmation: see pillars.py
+    cat = PIL.catalyst_pillar(news_recent, news_all, fund.get("sec") or [], now, parse_t)
+    kind = cat["kind"]
     fl = fund["float"] / 1e6 if fund.get("float") else None
     R = []
     def add(name, pts, mx, detail):
@@ -762,6 +754,11 @@ def analyze(inp, now, window_open, mood=None):
     # higher timeframe: 5-minute closes above their own 9 EMA
     c5 = [bars[i]["c"] for i in range(len(bars) - 1, -1, -5)][::-1]
     tf5 = None if len(c5) < 6 else bool(c5[-1] > ema(c5, 9)[-1])
+    # ---- the 5 pillars, graded 0-100 each from several indicators (pillars.py)
+    PV = PIL.evaluate(dict(price=p, prev_close=inp["prev_close"], bars=bars, daily=inp.get("daily") or [], fund=fund, fullvol=fullvol,
+                           rvol=rvol, rsrc=rsrc, hist=hist, avg_vol=inp.get("avg_vol"), vwap=vw, press=press,
+                           news_recent=news_recent, news_all=news_all, sec=fund.get("sec") or [], now=now), parse_t, NY)
+    rv15 = PV["rv15"]
     # breakout candle: price must hold near the top of the candle, not spike and get slammed (an upper wick = trap)
     lb = bars[-1] if bars else None
     hold_ok = True
@@ -807,6 +804,8 @@ def analyze(inp, now, window_open, mood=None):
     ck("Not stretched (<20% over VWAP)", ext is None or ext <= 20, False, "n/a" if ext is None else "%+.0f%% vs VWAP" % ext, 1)
     ck("Market not weak", None if not mood else mood.get("tone") != "bad", False, (mood or {}).get("tone") or "unknown", 1)
     ck("Prime time (before 10:30 NY)", not late_morning, False, now.strftime("%H:%M NY"), 1)
+    # day relative volume can come from a spike hours ago: the crowd must still be here for a breakout to work
+    ck("Crowd still here (last 15 min 2x+)", None if rv15 is None else rv15 >= 2, False, "n/a" if rv15 is None else "%.1fx normal" % rv15, 1)
     must_fail = [c[0] for c in CK if c[2] and c[1] is False]
     must_pre = [x for x in must_fail if x not in ("Breakout on a volume surge", "Breakout holding (no rejection wick)")]
     soft_fail = [c[0] for c in sorted(CK, key=lambda c: -c[4]) if not c[2] and c[1] is False]
@@ -906,6 +905,8 @@ def analyze(inp, now, window_open, mood=None):
         tip("good", "Huge volume (%s)" % ("100x+" if rvol > 100 else "%.0fx" % rvol), "Today's crowd favorite. Expect big swings both ways.")
     elif rvol < 2:
         tip("warn", "Normal volume (%.1fx)" % rvol, "No crowd yet. Breakouts often fail without one.")
+    if rvol >= 5 and rv15 is not None and rv15 < 1:
+        tip("warn", "The crowd left", "Big volume earlier, but the last 15 minutes are quieter than a normal day. Breakouts need the crowd.")
     if rotation is not None and rotation >= 1:
         tip("good", "Float rotated %.1fx" % rotation, "Every tradable share changed hands today: extreme demand, wild swings.")
     if res_above and room_r is not None:
@@ -954,12 +955,7 @@ def analyze(inp, now, window_open, mood=None):
     r0 = (tr["entry"] - tr["stop0"]) if tr and tr.get("stop0") is not None and entry == tr["entry"] else (entry - stop) if entry and stop else None
     rr = round((target - entry) / r0, 1) if target and entry and r0 and r0 > 0 else None
 
-    # ---- Ross's 5 pillars
-    pillars = [["Price $2 to $20", 2 <= p <= 20, "$%.2f" % p, "Cheap enough to move fast in % terms."],
-               ["Up 10% or more today", chg >= 10, "%+.1f%%" % chg, "Already showing strength today."],
-               ["Relative volume 5x+", rvol >= 5, "%.1fx" % rvol if rvol <= 100 else "100x+", "The crowd is here."],
-               ["Fresh news", kind == "strong" or (None if kind == "weak" else False), {"strong": "strong", "weak": "weak", "dilution": "dilution!", "none": "none"}[kind], "A reason for the move."],
-               ["Float under 20M", None if fl is None else fl < 20, "?" if fl is None else "%.1fM" % fl, "Small supply moves fast."]]
+    pillars = PV["list"]
 
     bits = []
     if kind == "strong": bits.append("news catalyst")
@@ -968,6 +964,7 @@ def analyze(inp, now, window_open, mood=None):
     if fl is not None and fl < 10: bits.append(("low float %.2fM" if fl < 1 else "low float %.1fM") % fl)
     if vw and p < vw: bits.append("below VWAP")
     if halted: bits.append("possibly halted")
+    bits.append("pillars %s %d/100" % (PV["grade"], PV["score"]))
     if plan: bits.append(plan["setup"].lower())
     if state == "LATE": bits.append("already ran")
     why = ", ".join(bits) or "moving, no clear edge yet"
@@ -982,7 +979,8 @@ def analyze(inp, now, window_open, mood=None):
                 setup=plan["setup"] if plan else None, note=plan.get("note") if plan else None,
                 trigger=plan and round(plan["trigger"], 2), entry=entry, stop=stop, target=target, max_price=max_price, blocks=blocks, rr=rr,
                 halted=halted, idle_min=None if idle is None else round(idle, 1), room_r=room_r, res_above=res_above,
-                hod=round(hod, 2), tips=T, why=why, pillars=pillars, levels=levels, next_res=next_res, next_sup=next_sup,
+                hod=round(hod, 2), tips=T, why=why, pillars=pillars, pillar_score=PV["score"], pillar_grade=PV["grade"],
+                pillar_label=PV["label"], pillar_summary=PV["summary"], rv15=rv15, levels=levels, next_res=next_res, next_sup=next_sup,
                 rotation=rotation, fullvol=fullvol, sec=sec[:12], sec_flags=sflags,
                 fund={k: fund.get(k) for k in ("loaded", "sources", "name", "country", "sector", "industry", "employees", "summary", "website",
                                                "mcap", "hi52", "lo52", "float", "float_src", "shares", "short_pct", "short_ratio",
@@ -1508,7 +1506,7 @@ def scan_loop():
             if DEMO:
                 L2.demo_prices({i["sym"]: i["price"] for i in inputs})
             stocks = [analyze(i, now, ms["window_open"], mood) for i in inputs]
-            stocks.sort(key=lambda x: (ORDER[x["signal"]], -x["score"]))
+            stocks.sort(key=lambda x: (ORDER[x["signal"]], -x["pillar_score"], -x["score"]))
             L2.watch([s["sym"] for s in stocks])     # stream the order books of the best stocks (open trades rank first)
             for s in stocks:
                 log_signal(s, now)

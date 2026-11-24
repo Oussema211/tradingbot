@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
  && useradd --create-home --uid 1000 desk \
  && mkdir -p /data && chown desk:desk /data
-COPY config.py notifier.py level2.py yahoo_feed.py momentum_scanner.py replay.py ./
+COPY config.py notifier.py level2.py yahoo_feed.py pillars.py momentum_scanner.py replay.py ./
 COPY web ./web
 
 USER desk

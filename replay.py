@@ -188,6 +188,7 @@ def main():
     log_rows, last_sig = [], {}
     reasons = {s: Counter() for s in syms}
     best = {s: (None, -1) for s in syms}      # closest it got: (signal, checks passed)
+    pil = {s: None for s in syms}             # best pillar grade seen in the window
     bs = datetime.combine(day, dtime(9, 30), NY)       # start of the candle being "lived through"
     while bs + timedelta(seconds=59) <= d_end:
         mood = mood_at(bs)
@@ -218,6 +219,8 @@ def main():
                            quote=dict(ap=None, bp=None, **{"as": None, "bs": None}), last_t=bl[-1]["t"], src=args.feed)
                 r = M.analyze(inp, t, win, mood)
                 sig = r["signal"]
+                if win and (pil[s] is None or r["pillar_score"] > pil[s][0]):
+                    pil[s] = (r["pillar_score"], r["pillar_grade"], r["pillar_label"])
                 if win and (sig in ("GET READY", "BUY NOW", "BUY HALF") or r["passed"] > best[s][1]) and best[s][0] not in ("BUY NOW", "BUY HALF"):
                     best[s] = (sig, max(r["passed"], best[s][1]))
                 if sig != last_sig.get(s):
@@ -249,7 +252,7 @@ def main():
     for s in syms:
         top = reasons[s].most_common(3)
         if top:
-            print("  %-5s best: %-10s  | %s" % (s, best[s][0], " · ".join("%s (%d)" % (k[:55], n) for k, n in top)))
+            print("  %-5s best: %-10s %-12s | %s" % (s, best[s][0], ("pillars %s %d" % (pil[s][1], pil[s][0])) if pil[s] else "", " · ".join("%s (%d)" % (k[:55], n) for k, n in top)))
     if args.csv:
         with open(args.csv, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)

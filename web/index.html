@@ -63,7 +63,13 @@ tr.row{cursor:pointer}tr.row:hover td{background:rgba(201,164,92,.05)}tr.sel td{
 .cells>div{border:1px solid var(--hair);border-radius:10px;padding:10px 12px;background:var(--panel)}.cells span{display:block;font-size:11px;color:var(--mute);letter-spacing:.06em}.cells b{font:600 24px/1.2 var(--serif);white-space:nowrap}.cells small{display:block;font-size:12px;color:var(--mute);line-height:1.4;margin-top:2px}
 .cells.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .pillars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
-.pillars>div{border:1px solid var(--hair);border-radius:10px;padding:10px;background:var(--panel);text-align:center}.pillars b{display:block;font:600 20px var(--serif);margin:4px 0 2px}.pillars span{font-size:11px;color:var(--mute);display:block;line-height:1.35}
+.pillars>div{border:1px solid var(--hair);border-radius:10px;padding:10px;background:var(--panel);text-align:center;min-width:0}.pillars b{display:block;font:600 20px var(--serif);margin:4px 0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pillars span{font-size:11px;color:var(--mute);display:block;line-height:1.35}
+.pbar{height:5px;border-radius:9px;background:var(--hair);margin:8px 0 4px;overflow:hidden}.pbar i{display:block;height:100%;border-radius:9px;background:var(--c)}
+.psum{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:4px 0 10px}.psum b{font:600 30px var(--serif);color:var(--c)}.psum span{color:var(--mute);font-size:14px}
+.pdet{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px;margin-top:10px}.pdet>div{border:1px solid var(--hair);border-left:3px solid var(--c);border-radius:10px;padding:10px 12px;background:var(--panel)}
+.pdet h4{margin:0 0 4px;font-size:13px;letter-spacing:.04em;display:flex;justify-content:space-between;gap:8px}.pdet ul{list-style:none;margin:6px 0;padding:0;font-size:13px}.pdet li{display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px dashed var(--hair)}.pdet li span:last-child{text-align:right;overflow-wrap:anywhere}
+.pdet p{margin:4px 0 0;font-size:13px;color:#d8d2c3}.pdet small{display:block;color:var(--mute);font-size:11px;margin-top:4px}
+.pg{font-weight:600}
 .scen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
 .scen>div{border:1px solid var(--hair);border-top:3px solid var(--c);border-radius:10px;padding:12px;background:var(--panel);font-size:14px;color:#e2dccd}.scen b{display:block;color:var(--c);font-size:12px;letter-spacing:.06em;margin-bottom:4px}
 ol.todo{margin:6px 0 0;padding-left:22px;font-size:15px;color:#ebe5d6}ol.todo li{margin:7px 0}
@@ -118,7 +124,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
  <section class="card" id="tk"><h2>Scanning the market</h2><p class="mute">The first scan takes 10 to 30 seconds. Float, short interest and SEC filings load for each stock over the next minute.</p></section>
  <section class="stack right">
   <div class="card scroll"><h2>Best stocks right now</h2>
-   <table><thead><tr><th>STOCK</th><th>SIGNAL</th><th class="n">CHECKS</th><th class="n">PRICE</th><th class="n">% UP</th><th class="n hide-s">FLOAT</th></tr></thead><tbody id="rows"></tbody></table>
+   <table><thead><tr><th>STOCK</th><th>SIGNAL</th><th class="n">CHECKS</th><th class="n">PILLARS</th><th class="n">PRICE</th><th class="n">% UP</th><th class="n hide-s">FLOAT</th></tr></thead><tbody id="rows"></tbody></table>
    <p class="mute" id="empty" hidden>No stock matches right now. That's normal: no setup, no trade.</p>
    <p class="mute" style="margin:12px 0 0">Ranked best first. Click a stock for the full analysis.</p>
   </div>
@@ -143,7 +149,7 @@ details.learnbox>summary{font:600 26px/1.2 var(--serif);color:var(--ink)}
   <div class="card"><h2>How the app picks stocks</h2>
    <ol class="steps">
     <li><b>Finds the crowd:</b> scans the whole market for stocks up 8% or more, priced $1.50 to $25.</li>
-    <li><b>Checks Ross's 5 pillars:</b> price, % gain, relative volume, fresh news, small float.</li>
+    <li><b>Grades the 5 pillars 0-100:</b> price $2-20, low float, high relative volume, high volume, good catalyst, each from several indicators with sources.</li>
     <li><b>Researches each one</b> across 4 sources: Alpaca (prices and news), Yahoo Finance (float, short interest, ownership, company), Finviz (backup float and more headlines) and SEC EDGAR (official filings that reveal share offerings).</li>
     <li><b>Runs a 20-point checklist</b> (9 MUST items, the rest weighted) and finds the entry: a short, quiet pullback after a run, then a break above its high on a volume surge.</li>
     <li><b>Follows every BUY to the exit:</b> the plan is frozen, then HOLD, SELL HALF at +1R, EXIT at the stop or target. Results go on the scoreboard.</li>
@@ -313,6 +319,15 @@ function secCard(s){const f=s.fund||{};if(!f.loaded)return'';const L=s.sec||[];
  ${(s.sec_flags||[]).map(x=>`<p style="margin:6px 0">${ICON(x[0])} <b>${esc(x[1])}.</b> ${esc(x[2]||'')}</p>`).join('')}
  ${L.length?`<table><thead><tr><th>DATE</th><th>FORM</th><th>WHAT IT MEANS</th></tr></thead><tbody>${L.map(x=>`<tr><td style="white-space:nowrap">${esc(x.date)}</td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:inherit">${esc(x.form)}</a>`:esc(x.form)}</td><td class="${formTone(x.form)}">${esc(formMeaning(x.form))}</td></tr>`).join('')}</tbody></table>`:'<p class="mute">No recent filings found (or not listed at the SEC).</p>'}`}
 
+const PCOL=v=>v==null?'mute':v>=75?'ok':v>=50?'gold':'bad';
+const PTONE={good:'ok',warn:'warn',bad:'bad',info:'mute'};
+function pillarsCard(s){const P=s.pillars||[];if(!P.length||!P[0].key)return'';
+ const c=PCOL(s.pillar_score);
+ return`<h3>The 5 pillars</h3><p class="expl">What the best momentum stocks have in common. Each pillar is graded 0-100 from several indicators, weighted: catalyst 25, relative volume 25, float 20, volume 15, price 15.</p>
+ <div class="psum" style="--c:var(--${c})"><b>${esc(s.pillar_grade)} · ${s.pillar_score}/100</b><span>${esc(s.pillar_label)} · ${esc(s.pillar_summary)}</span></div>
+ <div class="pillars">${P.map(p=>`<div style="--c:var(--${PCOL(p.score)})">${ICON(p.ok)}<b title="${esc(p.value)}">${esc(p.value)}</b><span>${esc(p.name)}</span><div class="pbar"><i style="width:${p.score}%"></i></div><span>${p.score}/100 · ${esc(p.tier)}</span></div>`).join('')}</div>
+ <details><summary>Every indicator behind the pillars, and where the rules come from</summary><div class="pdet">${P.map(p=>`<div style="--c:var(--${PCOL(p.score)})"><h4><span>${esc(p.name.toUpperCase())}</span><span class="${PCOL(p.score)==='gold'?'warn':PCOL(p.score)}">${p.score}/100</span></h4><ul>${p.indicators.map(i=>`<li><span class="mute">${esc(i[0])}</span><span class="${PTONE[i[2]]||''}">${esc(i[1])}</span></li>`).join('')}</ul><p>${esc(p.why)}</p><small>Source: ${esc(p.ref)}</small></div>`).join('')}</div>
+ <p class="mute" style="font-size:12px;margin-top:10px">[RC] Ross Cameron / Warrior Trading stock selection criteria · [AZ] Andrew Aziz, <i>How to Day Trade for a Living</i> · [CH] Chan (2003), news vs no-news drift, J. Financial Economics · [GKM] Gervais, Kaniel &amp; Mingelgrin (2001), high-volume return premium, J. Finance · [LS] Lee &amp; Swaminathan (2000), momentum and volume, J. Finance · [TS] Tetlock (2007, 2008), headline words and returns, J. Finance</p></details>`}
 function tally(s){const n=k=>s.tips.filter(t=>t[0]===k).length,b=n('bad');return`<div class="tally"><span class="ok">✓ ${n('good')} in your favor</span><span class="warn">! ${n('warn')} be careful</span><span class="${b?'bad':'mute'}">✗ ${b} deal-breaker${b===1?'':'s'}</span></div>`}
 function ticket(s){
  if(!s)return'<h2>No stocks yet</h2><p class="mute">Nothing meets the rules right now. The app checks every few seconds and the banner tells you when something shows up.</p>';
@@ -322,7 +337,7 @@ function ticket(s){
  if(s.entry&&/^(BUY|GET)/.test(sig)){const per=s.entry-s.stop;
   plan=`<h3>The plan</h3><p class="expl">Exact prices for this trade. The stop is where you're proven wrong. The target is twice the risk.</p><div class="cells"><div><span>BUY ABOVE</span><b>${usd(s.entry)}</b><small>max ${usd(maxp(s))}</small></div><div><span>STOP-LOSS</span><b>${usd(s.stop)}</b><small>risk ${usd(per)} / share</small></div><div><span>TARGET</span><b>${usd(s.target)}</b><small>gain ${usd(s.target-s.entry)} / share</small></div><div><span>REWARD : RISK</span><b>${s.rr}:1</b><small>half at ${usd(s.entry+per)}</small></div></div>
   <div class="btns"><button data-o="copy">Copy plan</button></div>${omsg?`<p class="omsg ok">${esc(omsg)}</p>`:''}`}
- const pil=`<h3>Ross's 5 pillars</h3><p class="expl">The 5 things the best momentum stocks have in common. The more ✓, the better.</p><div class="pillars">${s.pillars.map(p=>`<div>${ICON(p[1])}<b>${esc(p[2])}</b><span>${esc(p[0])}</span></div>`).join('')}</div>`;
+ const pil=pillarsCard(s);
  const grp=(k,lab,cls)=>{const L=s.tips.filter(t=>t[0]===k);return L.length?`<div class="tipgrp"><b class="${cls}">${lab} (${L.length})</b><ul class="tips">${L.map(t=>`<li>${ICON(t[0])}<span><b>${esc(t[1])}</b><small>${esc(t[2]||'')}</small></span></li>`).join('')}</ul></div>`:''};
  const tips=s.tips.length?`<h3>Smart tips</h3><p class="expl">What an experienced trader would point out right now, most important first.</p>${grp('bad','DEAL-BREAKERS','bad')}${grp('good','IN YOUR FAVOR','ok')}${grp('warn','BE CAREFUL','warn')}`:'';
  const news=`<h3>News</h3><p class="expl">Headlines from Benzinga (via Alpaca) and Finviz. Fresh, specific news (FDA, contracts, earnings) is the best fuel.</p>`+(s.news.length?'<ul class="news">'+s.news.map(n=>`<li>${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.h)}</a>`:esc(n.h)} <span class="src">${esc(n.src||'')}${n.t?' · '+ago(n.t):''}</span></li>`).join('')+'</ul>':'<p class="mute">No headlines found.</p>');
@@ -330,14 +345,14 @@ function ticket(s){
  return `<div class="hero"><div><div class="eyebrow">${esc(s.setup||'NO SETUP YET').toUpperCase()}</div><div class="tk">${esc(s.sym)}</div>${f.name?`<div class="co">${esc(f.name)}</div>`:''}${sub?`<div class="mute">${sub}</div>`:''}<div class="sig ${cls}">${esc(sig)}</div></div><div class="ring ${cls}" style="--p:${Math.round(100*s.passed/s.total)}"><b>${s.passed}/${s.total}</b><small>CHECKS</small></div></div>
  ${todo(s)}
  ${explainCard(s)}
+ ${pil}
  ${plan}
  <h3>Level 2: the live order book</h3><p class="expl">Every buyer (bids, green) and seller (asks, red) waiting right now, with share sizes and who posted them. Updates every second. Read below for what it means and everything that can happen next.</p><div id="l2"><p class="mute">Loading the order book...</p></div>
  <h3>Chart (1-minute candles)</h3><div class="fig" aria-label="1-minute candlestick chart with VWAP, 9 EMA, volume and key levels"><svg id="ch"></svg></div>
  <div class="legend"><span><i style="background:#5fd0a0"></i>up candle</span><span><i style="background:#d9645a"></i>down candle</span><span><i style="background:#a78bfa"></i>VWAP</span><span><i style="background:#e6cf9a"></i>9 EMA (dotted)</span><span>bars at the bottom = volume</span></div>
  ${checks(s)}
- <details class="research"><summary>Research: pillars, tips, float, levels, SEC, news</summary>
+ <details class="research"><summary>Research: tips, float, levels, SEC, news</summary>
  ${tally(s)}${scen(s)}
- ${pil}
  <h3>Why this stock</h3>${story(s)}
  ${tips}
  <h3>Float &amp; ownership</h3><p class="expl">How many shares can trade and who holds them. This decides how fast and how violently it can move.</p>${fundCard(s)}
@@ -422,7 +437,7 @@ function draw(){
  $('err').hidden=!em;$('err').textContent=em?'Data error: '+em:'';
  const list=data.stocks;if(!list.find(s=>s.sym===sel))sel=list[0]&&list[0].sym;
  $('empty').hidden=list.length>0;
- $('rows').innerHTML=list.map(s=>{const c=CLS[s.signal];return`<tr class="row ${s.sym===sel?'sel':''}" data-s="${esc(s.sym)}"><td><span class="sym">${esc(s.sym)}</span><span class="rw">${esc(s.reason&&!/^(BUY|HOLD)/.test(s.signal)?s.reason:s.why)}</span></td><td><span class="tag ${c}" style="--c:var(--${VAR[c]})">${esc(s.signal)}</span></td><td class="n">${s.passed}/${s.total}</td><td class="n">${usd(s.price)}</td><td class="n">${s.chg}%</td><td class="n hide-s">${s.float_m==null?(s.fund&&s.fund.loaded?'?':'...'):s.float_m.toFixed(1)+'M'}</td></tr>`}).join('');
+ $('rows').innerHTML=list.map(s=>{const c=CLS[s.signal];return`<tr class="row ${s.sym===sel?'sel':''}" data-s="${esc(s.sym)}"><td><span class="sym">${esc(s.sym)}</span><span class="rw">${esc(s.reason&&!/^(BUY|HOLD)/.test(s.signal)?s.reason:s.why)}</span></td><td><span class="tag ${c}" style="--c:var(--${VAR[c]})">${esc(s.signal)}</span></td><td class="n">${s.passed}/${s.total}</td><td class="n"><span class="pg" style="color:var(--${PCOL(s.pillar_score)})" title="${esc(s.pillar_label||'')}">${esc(s.pillar_grade||'-')}</span> <span class="mute">${s.pillar_score??''}</span></td><td class="n">${usd(s.price)}</td><td class="n">${s.chg}%</td><td class="n hide-s">${s.float_m==null?(s.fund&&s.fund.loaded?'?':'...'):s.float_m.toFixed(1)+'M'}</td></tr>`}).join('');
  banner();const html=ticket(cur());if(html!==lastTk){lastTk=html;$('tk').innerHTML=html;const c=cur();if(c)chart(c);drawL2(true)}
  const l2s=data.l2||{};$('l2pill').textContent=l2s.demo?'Level 2 · demo':l2s.live?'Level 2 · Schwab live':l2s.configured?(l2s.logged_in?'Level 2 · '+(l2s.status||'connecting'):'Level 2 · login needed'):'Level 2 off';$('l2pill').className='pill'+(l2s.live?' live':' off');
  const lc=l2card();if(lc!==lastL2c){lastL2c=lc;$('l2Card').innerHTML=lc}

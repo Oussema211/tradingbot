@@ -143,6 +143,22 @@ python replay.py --verbose --csv day.csv                # every signal change, s
 ```
 It prints the trades the bot would have taken (entry, stop, exit, result in R) and, for every stock, the rules that blocked it most. Use it before changing any rule.
 
+## The 5 pillars, graded (pillars.py)
+
+Each pillar gets a score from 0 to 100 built from several indicators. The scores combine into one **Pillar Score** with a grade (A+ / A / B / C / D). The grade is shown in the stock list, in the stock view (open it to see every indicator and its source), in BUY alerts and in the replay report. Stocks with the same signal are ranked by Pillar Score.
+
+| Pillar (weight) | Indicators | Pass |
+| --- | --- | --- |
+| **Good catalyst** (25) | headline type graded (FDA approval / buyout / positive Phase 3 = 100 … contract, earnings beat = 85 … partnership = 75 … plain earnings report = 65 … vague PR = 30), freshness, second source, same-day SEC 8-K, red flags (offering, reverse split, delisting notice, FDA rejection, lawsuit, miss). Letters of intent are capped at 40. | specific type and score 70+ |
+| **High relative volume** (25) | day RV vs the same minute on the last 10 days, **RV of the last 15 minutes** (is the crowd still here?), 5-minute volume trend | 5x+ |
+| **Low float** (20) | float (5M / 10M / 20M tiers), float rotation (volume / float), short interest, insider and institution ownership | under 20M |
+| **High volume** (15) | shares traded today (full market), dollar volume, % of a normal full day, buy vs sell volume over 10 minutes. Pre-market bars are 1/5 of the regular-session bars. | 1M+ shares |
+| **Price $2-20** (15) | price zone ($4-12 is the sweet spot), 14-day average daily range (ATR%), gap, tick size under $2 | $2-20 |
+
+New decision check (minor, 1 point): **Crowd still here**. The last 15 minutes must trade at 2x+ their normal volume. A big relative volume from a 7am spike that has since died out no longer counts.
+
+Sources: Ross Cameron / Warrior Trading stock-selection criteria; Andrew Aziz, *How to Day Trade for a Living* (stocks in play); Chan (2003, *J. Financial Economics*): moves with news keep drifting, moves without news reverse; Gervais, Kaniel & Mingelgrin (2001, *J. Finance*): high-volume return premium; Lee & Swaminathan (2000, *J. Finance*): momentum and volume; Tetlock (2007) and Tetlock et al. (2008, *J. Finance*): headline words predict the reaction.
+
 ## 4. What changed in this version
 
 **More accurate signals**

@@ -355,6 +355,9 @@ class AlertManager:
         L.append("Entry %s (max %s) · Stop %s · Half at %s · Target %s" % (
             usd(s["entry"]), usd(s["max_price"]), usd(s["stop"]), usd(s["entry"] + (s["entry"] - s["stop"])), usd(s["target"])))
         L.append("Checks passed: %d/%d · %s" % (s.get("passed", 0), s.get("total", 0), s["why"]))
+        if s.get("pillars"):
+            L.append("Pillars %s (%d/100): " % (s.get("pillar_grade", "?"), s.get("pillar_score", 0)) + " · ".join(
+                "%s %s" % ("✓" if p["ok"] else "?" if p["ok"] is None else "✗", p["value"]) for p in s["pillars"]))
         miss = [c[0] for c in s.get("checks", []) if c[1] is False and not c[2]]
         if miss:
             L.append("Missing: " + ", ".join(miss[:3]))
