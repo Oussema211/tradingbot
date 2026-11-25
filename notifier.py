@@ -299,7 +299,7 @@ class AlertManager:
                 self.armed.pop(sym, None)
                 self.stats["failed"].append(sym)
                 self._emit("%s:%s:cancel:%s" % (d, sym, a["trigger"]), "fail", "CANCEL PLAN · %s %s" % (sym, usd(s["price"])),
-                           "It fell under %s before breaking out. Cancel your buy order. No trade, no loss." % usd(a["stop"]), 3, ["x"])
+                           "Broke %s before triggering. Cancel the buy order." % usd(a["stop"]), 3, ["x"])
                 continue
             if not s.get("entry"):
                 self.ready_seen.pop(sym, None)
@@ -332,7 +332,7 @@ class AlertManager:
         sym, k = tr["sym"], "%s:%s:%s" % (d, tr["sym"], tr["id"])
         if tr.get("half"):
             self._emit(k + ":half", "trade", "💰 SELL HALF · %s %s" % (sym, usd(tr["half_price"])),
-                       "Hit +1R. Sell HALF now.\nMove your stop UP to %s (breakeven): this trade can't lose anymore.\nRest: target %s." % (
+                       "+1R hit. Sell ½ · stop → %s (breakeven) · rest → %s" % (
                            usd(tr["entry"]), usd(tr["target"])), 5, ["moneybag"])
         if tr.get("closed"):
             win = tr["result"] == "WIN"
@@ -340,29 +340,49 @@ class AlertManager:
             if tr["result"] == "BREAKEVEN":
                 title = "⚪ EXIT · %s (breakeven)" % sym
             self._emit(k + ":close", "trade", title,
-                       "%s at about %s: %s.\nResult: %s %+.1fR%s" % (
-                           "Sell the rest" if tr.get("half") else "Sell everything", usd(tr["exit"]), tr["why"], tr["result"], tr["r"],
-                           "" if win else "\nSmall loss, as planned. Don't re-enter this stock today."), 5, ["checkered_flag" if win else "red_circle"])
+                       "%s ~%s · %s\n%s %+.1fR%s" % (
+                           "Sell rest" if tr.get("half") else "Sell all", usd(tr["exit"]), tr["why"], tr["result"], tr["r"],
+                           "" if win else " · no re-entry today"), 5, ["checkered_flag" if win else "red_circle"])
 
     @staticmethod
     def _title(s):
-        icon = {"BUY NOW": "🟢", "BUY HALF": "🟢", "GET READY": "🟡"}.get(s["signal"], "")
-        return "%s %s · %s %s" % (icon, s["signal"], s["sym"], usd(s["price"]))
+        """Everything needed to act fits in the lock-screen title: side, symbol, entry, max."""
+        if s["signal"] == "GET READY":
+            return "🟡 READY %s · trigger %s" % (s["sym"], usd(s.get("trigger") or s["entry"]))
+        size = " ½ SIZE" if s["signal"] == "BUY HALF" else ""
+        return "🟢 BUY%s %s %s · max %s" % (size, s["sym"], usd(s["entry"]), usd(s["max_price"]))
 
     @staticmethod
     def _body(s, mood):
-        L = [s.get("action") or ""]
-        L.append("Entry %s (max %s) · Stop %s · Half at %s · Target %s" % (
-            usd(s["entry"]), usd(s["max_price"]), usd(s["stop"]), usd(s["entry"] + (s["entry"] - s["stop"])), usd(s["target"])))
-        L.append("Checks passed: %d/%d · %s" % (s.get("passed", 0), s.get("total", 0), s["why"]))
-        if s.get("pillars"):
-            L.append("Pillars %s (%d/100): " % (s.get("pillar_grade", "?"), s.get("pillar_score", 0)) + " · ".join(
-                "%s %s" % ("✓" if p["ok"] else "?" if p["ok"] is None else "✗", p["value"]) for p in s["pillars"]))
-        miss = [c[0] for c in s.get("checks", []) if c[1] is False and not c[2]]
-        if miss:
-            L.append("Missing: " + ", ".join(miss[:3]))
+        e, st, tg = s["entry"], s["stop"], s["target"]
+        r = e - st if e and st else 0
+        L = ["Stop %s (-%.1f%%) · ½ %s · Tgt %s%s" % (
+            usd(st), 100 * r / e if e else 0, usd(e + r), usd(tg), " (%.1fR)" % ((tg - e) / r) if tg and r > 0 else "")]
+        fm = s.get("float_m")
+        L.append(" · ".join(x for x in (
+            "%s %d" % (s.get("pillar_grade", "?"), s.get("pillar_score", 0)), s.get("setup") or "",
+            "RVOL %.0fx" % s["rvol"] if s.get("rvol") else "",
+            ("Float %.2fM" if fm < 1 else "Float %.1fM") % fm if fm is not None else "Float ?",
+            "%+.0f%%" % s["chg"] if s.get("chg") is not None else "") if x))
+        rec, bt, parts = s.get("setup_rec"), s.get("bt"), []
+        if bt and bt.get("n"):
+            parts.append("Backtest %s: %d trades · %d%% win · %+.2fR avg%s" % (
+                bt["label"], bt["n"], round(100 * bt["w"] / bt["n"]), bt["avg"], " (small sample)" if bt.get("thin") else ""))
+        if rec and rec.get("n"):
+            parts.append("Live %dW/%dL %+.1fR" % (rec["w"], rec["n"] - rec["w"], rec["r"]))
+        if parts:
+            L.append("📊 " + " · ".join(parts))
+        warn = [t[1] for t in s.get("tips") or [] if t[0] in ("bad", "warn")][:2]
+        if warn:
+            L.append("⚠ " + " · ".join(warn))
         if s.get("book_line"):
-            L.append("Level 2: " + s["book_line"])
+            L.append("L2: " + s["book_line"])
         if s.get("news"):
-            L.append("News: " + s["news"][0]["h"][:120])
+            L.append("📰 " + s["news"][0]["h"][:90])
+        if s.get("fired") and s["signal"] != "GET READY":
+            now = time.time()
+            L.append("⏱ broke %s · sent %s (+%ds) · %s" % (
+                datetime.fromtimestamp(s["fired"], C.NY).strftime("%H:%M:%S"),
+                datetime.fromtimestamp(now, C.NY).strftime("%H:%M:%S"), max(0, round(now - s["fired"])),
+                "Schwab live tape" if s.get("px_src") == "schwab" else "polled"))
         return "\n".join(L)

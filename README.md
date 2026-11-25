@@ -50,6 +50,17 @@ Server settings → Integrations → Webhooks → New webhook → Copy URL → `
 There's no spam: a GET READY must hold for 2 scans in a row, each setup is sent once, and nothing is re-sent after a restart.
 By default you only get BUY alerts and their follow-ups (SELL HALF, EXIT NOW, TARGET HIT). Set `ALERT_LEVEL=ready` to also get GET READY heads-ups.
 
+**Alerts are two lines you can act on from the lock screen:**
+```
+🟢 BUY APUS $2.07 · max $2.10
+Stop $1.94 (-6.3%) · ½ $2.20 · Tgt $2.33 (2.0R)
+A 86 · Micro pullback · RVOL 126x · Float 0.69M · +30%
+📊 Backtest Micro pullback · A: 38 trades · 61% win · +0.52R avg · Live 12W/6L +3.4R
+⚠ Micro-cap ($20M) · Late morning
+⏱ broke 09:58:13 · sent 09:58:18 (+5s) · Schwab live tape
+```
+**Core pillars are hard gates** (`MUST_PILLARS=price,float,rvol,catalyst`): a big float, a stock outside $2-20, RVOL under 5x or no real catalyst (analyst notes and vague PRs don't count) is NO TRADE, never GET READY or BUY. An unknown float (data blocked) doesn't block. Set `MUST_PILLARS=` to go back to weighted scoring only.
+
 ---
 
 ## 2b. Real-time Level 2 (order book), free with Schwab
@@ -100,7 +111,7 @@ Also new for every stock: **"Why <signal>, and what would change it"**. It lists
    ```
 6. Copy the app from your PC (in a Windows terminal, in the app folder):
    ```bash
-   scp -i your-key.key -r config.py notifier.py level2.py yahoo_feed.py momentum_scanner.py replay.py web requirements.txt Dockerfile docker-compose.yml .env ubuntu@YOUR_SERVER_IP:~/momentum-desk/
+   scp -i your-key.key -r config.py notifier.py level2.py yahoo_feed.py pillars.py momentum_scanner.py replay.py web requirements.txt Dockerfile docker-compose.yml .env ubuntu@YOUR_SERVER_IP:~/momentum-desk/
    ```
 7. On the server, edit `.env` (`nano .env`) and set **`DASHBOARD_PASSWORD=`** (required online) and `PUBLIC_URL=http://YOUR_SERVER_IP:8765`.
 8. Start it:
@@ -118,7 +129,7 @@ No Docker? Use `deploy/momentum-desk.service` (instructions inside the file).
 
 ### Option B: GitHub Actions (no server, no card)
 GitHub starts the scanner every weekday at 07:20/08:20 New York time (depending on daylight saving). It runs until 11:05, sends all the alerts, then stops.
-1. Create a free GitHub account. Make a **public** repository (public repos get unlimited free minutes; your keys stay secret, see step 3) and upload: `config.py`, `notifier.py`, `momentum_scanner.py`, `web/`, `requirements.txt`, `.github/workflows/scanner.yml`. **Never upload `.env`.**
+1. Create a free GitHub account. Make a **public** repository (public repos get unlimited free minutes; your keys stay secret, see step 3) and upload: `config.py`, `notifier.py`, `level2.py`, `yahoo_feed.py`, `pillars.py`, `momentum_scanner.py`, `web/`, `requirements.txt`, `.github/workflows/scanner.yml`. **Never upload `.env`.**
 2. *(A private repo also works, but the free 2,000 minutes a month run out after about 10 trading days.)*
 3. Repository → Settings → Secrets and variables → Actions → **New repository secret**. Add `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` and your alert settings (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`, or `NTFY_TOPIC`). Optionally add `ACCOUNT_SIZE` as a secret too (for share counts; a secret keeps it out of the public logs), and `RISK_PCT` under the **Variables** tab.
 4. Actions tab → "Momentum Desk morning scan" → **Run workflow** to test. You should get "Momentum Desk is online".
@@ -133,6 +144,17 @@ Set Windows **Sleep → Never** (while plugged in), or alerts stop while the PC 
 ## Full-market candles (Yahoo) and the Replay tool
 
 **Candles and volume now come from Yahoo Finance (full market, free).** The free Alpaca feed is IEX only, about 2–3% of trading: on 2026-11-23 it saw 28,331 BNAI shares in the first 90 minutes, while the real number was 15.1 million. Volume checks, VWAP and pullback patterns now use the full tape. Alpaca IEX stays on as the automatic backup, per stock. The dashboard pill shows which one is live ("Candles · full volume" or "IEX sample only"). If Yahoo blocks the server during the window, you get one Telegram warning. To turn it off: `YAHOO_CANDLES=0`.
+
+**Backtest, and let the results drive the alerts:**
+```bash
+python replay.py --days 40 --save-stats      # last 40 trading days, each day's top gainers found automatically (~12 min)
+```
+It prints win rate and average R per setup and per setup + pillar grade, and saves `setup_stats.json`. The live bot reloads it on its own (no restart):
+- every alert shows the matching record (`📊 Backtest Micro pullback · A: 38 trades · 61% win · +0.52R avg`)
+- a setup or setup + grade that **lost money over 12+ trades is muted** (NO TRADE "muted: … lost in the backtest"). `MUTE_LOSING_SETUPS=0` shows the record without muting; `STATS_MIN_TRADES` sets the sample size.
+Re-run it weekly (or after any rule change) so the numbers stay current.
+
+**Fast triggers with Schwab connected:** the Schwab stream's real-time trade prints now (1) replace the IEX/Yahoo price in every scan and (2) wake the scanner the instant a print crosses an armed trigger, a stop, +1R or the target, instead of waiting for the next 3-second scan. The 5-second breakout confirmation is timed exactly too. Each BUY alert ends with `⏱ broke 09:58:13 · sent 09:58:18 (+5s) · Schwab live tape` (or `polled` without Schwab).
 
 **Replay any day through the real rules** (uses Alpaca's free full-market history, which is free once it's 15+ minutes old; it never touches your live bot's files):
 ```bash

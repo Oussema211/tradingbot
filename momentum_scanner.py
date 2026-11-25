@@ -25,7 +25,7 @@ HONEST LIMITS
   * Real Level 2 needs a free Schwab developer app + a Schwab brokerage account (see level2.py). Without it: no order book.
   * No halt feed (halts are inferred from missing trades).
 """
-import os, re, sys, csv, json, math, time, random, socket, signal, logging, threading, webbrowser, hmac, base64
+import os, re, sys, csv, json, math, time, random, socket, signal, logging, threading, webbrowser, hmac, base64, functools
 import urllib.request, urllib.parse, urllib.error, http.cookiejar
 from datetime import datetime, timedelta, date, time as dtime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -76,6 +76,7 @@ def paper(method, path):
     except urllib.error.HTTPError as e:
         raise RuntimeError("Alpaca said: " + e.read()[:250].decode("utf8", "ignore"))
 
+@functools.lru_cache(maxsize=300_000)     # the same candle times are parsed thousands of times per scan
 def parse_t(t):
     """ISO time from Alpaca. Handles 'Z' and nanosecond fractions, which older Pythons reject."""
     t = re.sub(r"(\.\d{6})\d+", r"\1", t.replace("Z", "+00:00"))
@@ -785,6 +786,12 @@ def analyze(inp, now, window_open, mood=None):
     ck("Liquid ($1M+ traded today)", None if dollars is None else dollars >= 1e6, True, "unknown" if dollars is None else "$%.1fM" % (dollars / 1e6))
     ck("Breakout on a volume surge", bvol, True, "yes" if bvol else "checked at the breakout")
     ck("Breakout holding (no rejection wick)", hold_ok, True, "yes" if hold_ok else "sellers slammed the breakout")
+    # core pillars are hard gates: a big float or an analyst note never reaches the alert feed
+    gate = [x for x in PV["list"] if x["key"] in C.MUST_PILLARS]
+    gate_bad = [x for x in gate if x["ok"] is False or (x["key"] == "catalyst" and x["ok"] is not True)]
+    if gate:
+        ck("Core pillars (%s)" % ", ".join(x["key"] for x in gate), not gate_bad, True,
+           "all pass" if not gate_bad else ", ".join("%s %s" % (x["name"].lower(), x["value"]) for x in gate_bad))
     # KEY (2 points each)
     # weak news is still news (1 point); no news at all costs the full 2
     ck("Real news catalyst", kind == "strong", False, {"strong": "strong", "weak": "weak news", "dilution": "dilution", "none": "no news"}[kind],
@@ -829,6 +836,11 @@ def analyze(inp, now, window_open, mood=None):
         real_blocks.append("already lost on %s today: never revenge-trade the same stock" % s)
     elif n_here >= C.MAX_TRADES_PER_STOCK:
         real_blocks.append("already traded %s %d times today" % (s, n_here))
+    if gate_bad:
+        real_blocks.append("fails core pillar: " + ", ".join("%s %s" % (x["name"].lower(), x["value"]) for x in gate_bad))
+    bt = setup_stats(plan["setup"], PV["grade"]) if plan else None
+    if bt and not bt.get("thin") and C.MUTE_LOSING_SETUPS and bt["avg"] <= 0:
+        real_blocks.append("muted: %s lost in the backtest (%+.2fR a trade over %d trades)" % (bt["label"], bt["avg"], bt["n"]))
     reason = None
     # confirmation: with scans every few seconds the first tick over the trigger is often a fake-out that gets slammed.
     # The price must still be over the entry 5+ seconds after the break (2 scans) before a BUY is called.
@@ -977,6 +989,7 @@ def analyze(inp, now, window_open, mood=None):
                 action=action, reason=reason, checks=CK, passed=passed, total=sum(1 for c in CK if c[1] is not None), penalty=penalty, allowed=allowed,
                 trade=tr and {k: tr.get(k) for k in TRADE_PUBLIC},
                 setup=plan["setup"] if plan else None, note=plan.get("note") if plan else None,
+                fired=plan.get("fired") if plan else None, setup_rec=dict(hs) if hs else None, bt=bt, px_src=inp.get("px_src"),
                 trigger=plan and round(plan["trigger"], 2), entry=entry, stop=stop, target=target, max_price=max_price, blocks=blocks, rr=rr,
                 halted=halted, idle_min=None if idle is None else round(idle, 1), room_r=room_r, res_above=res_above,
                 hod=round(hod, 2), tips=T, why=why, pillars=pillars, pillar_score=PV["score"], pillar_grade=PV["grade"],
@@ -1029,6 +1042,38 @@ def load_setup_hist():
         pass
     except Exception as e:
         log.warning("could not read the trade log: %s", e)
+
+BT = {"mtime": None, "by_setup": {}, "by_grade": {}, "meta": {}}
+def load_setup_stats():
+    """Backtest results per setup and per setup + grade (replay.py --save-stats). Re-read whenever the file changes."""
+    try:
+        mt = os.path.getmtime(C.STATS_FILE)
+    except OSError:
+        BT.update(mtime=None, by_setup={}, by_grade={}, meta={})
+        return
+    if mt == BT["mtime"]:
+        return
+    try:
+        with open(C.STATS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        BT.update(mtime=mt, by_setup=d.get("by_setup") or {}, by_grade=d.get("by_grade") or {},
+                  meta={k: d.get(k) for k in ("generated", "from", "to", "days", "trades_n")})
+        log.info("Backtest stats loaded: %s trades, %s to %s.", BT["meta"].get("trades_n"), BT["meta"].get("from"), BT["meta"].get("to"))
+    except Exception as e:
+        BT["mtime"] = mt
+        log.warning("could not read %s: %s", C.STATS_FILE, e)
+
+def setup_stats(setup, grade):
+    """The most specific backtest record with enough trades: setup + grade letter first, then the setup alone."""
+    if not setup:
+        return None
+    g = (grade or "?")[0]
+    for key, src, label in (("%s|%s" % (setup, g), BT["by_grade"], "%s · %s" % (setup, g)), (setup, BT["by_setup"], setup)):
+        h = src.get(key)
+        if h and h.get("n", 0) >= C.STATS_MIN_TRADES:
+            return dict(h, label=label)
+    h = BT["by_setup"].get(setup)
+    return dict(h, label=setup, thin=True) if h and h.get("n") else None
 
 def trades_today(now):
     with TLOCK:
@@ -1350,11 +1395,15 @@ def fetch_live():
             bars, avg_vol, hist, daily, src = BARS[s], DAILY.get(s, (0, 0))[1], HIST.get(s, (0, []))[1], DAYBARS.get(s, []), "iex"
         else:
             continue
+        px_src = None
+        rq = L2.quote(s) if L2.enabled and not DEMO else None
+        if rq and rq.get("last"):        # Schwab's real-time full-tape last print beats the IEX sample and Yahoo's lag
+            price, last_t, px_src = rq["last"], datetime.now(NY).isoformat(), "schwab"
         bars = live_candle(bars, price, last_t)
         q = sn.get("latestQuote") or {}
         out.append(dict(sym=s, price=price, prev_close=prev, bars=bars, avg_vol=avg_vol, hist=hist, daily=daily, src=src,
                         fund=fundamentals(s), yq=YQ.get(s), news=nm.get(s, []),
-                        quote=dict(ap=q.get("ap"), bp=q.get("bp"), **{"as": q.get("as"), "bs": q.get("bs")}), last_t=last_t))
+                        quote=dict(ap=q.get("ap"), bp=q.get("bp"), **{"as": q.get("as"), "bs": q.get("bs")}), last_t=last_t, px_src=px_src))
     return out
 
 def live_candle(bars, price, last_t):
@@ -1489,6 +1538,33 @@ HEALTH = dict(last_ok=0.0, started=time.time())
 STOP = threading.Event()
 _SHUTDOWN = [None]     # set in main(): stops the web server so the process exits
 
+WAKE = threading.Event()     # a streamed trade crossed a trigger / stop / target: scan NOW instead of waiting
+FAST = dict(wakes=0, last=None, t=0.0)
+_TICK_T = {}
+def on_tick(sym, last):
+    """Called by the Schwab stream on every trade print (its own thread). Cheap: it only decides whether to wake the scan."""
+    if not last:
+        return
+    st = STATE.get(sym)
+    hot = bool(st and "fired" not in st and last >= st["trigger"])
+    if not hot:
+        with TLOCK:
+            tr = next((t for t in TRADES["list"] if t["sym"] == sym and not t.get("closed")), None)
+        hot = bool(tr and (last <= tr["stop"] or last >= tr["target"] or (not tr["half"] and last >= tr["t1"])))
+    nowts = time.time()
+    if hot and nowts - _TICK_T.get(sym, 0) > 1.0:
+        _TICK_T[sym] = nowts
+        FAST.update(wakes=FAST["wakes"] + 1, last="%s $%.2f" % (sym, last), t=nowts)
+        WAKE.set()
+
+def next_wait(now):
+    """Normally INTERVAL; shorter when a breakout's 5-second confirmation is about to complete, so the BUY isn't late."""
+    if not busy_hours(now):
+        return 60
+    t = time.time()
+    due = [st["fired"] + 5.2 - t for st in list(STATE.values()) if st.get("fired") and t - st["fired"] < 5.2]
+    return min([INTERVAL] + [max(0.2, d) for d in due])
+
 def busy_hours(now):
     """Scan fast from 04:00 to 20:00 New York on weekdays, slowly otherwise (saves API calls overnight)."""
     return DEMO or (now.weekday() < 5 and dtime(4) <= now.time() < dtime(20))
@@ -1538,13 +1614,20 @@ def scan_loop():
             RESULT["alerts"] = list(ALERTS.history)[:20]
             RESULT["notify"] = dict(channels=NOTIFIER.names, error=NOTIFIER.last_error, level=C.ALERT_LEVEL)
             RESULT["l2"] = L2.public_status()
+            RESULT["fast"] = dict(FAST, live=bool(L2.enabled and not DEMO and L2.public_status()["live"]))
+            RESULT["backtest"] = BT["meta"]
         if C.RUN_UNTIL and not DEMO:
             today = market_state(now).get("today")
             if now.time() >= C.RUN_UNTIL or today is None:
                 log.info("RUN_UNTIL reached (or market closed today): exiting.")
                 STOP.set(); _SHUTDOWN[0] and _SHUTDOWN[0]()
                 break
-        STOP.wait(INTERVAL if busy_hours(now) else 60)
+        try:
+            load_setup_stats()          # picks up a fresh replay.py --save-stats without a restart
+        except Exception:
+            pass
+        WAKE.wait(next_wait(now))
+        WAKE.clear()
 
 def load_html():
     try:
@@ -1710,6 +1793,7 @@ def main():
         return
     log.info("MOMENTUM DESK starting (%s)", "DEMO - fake data" if DEMO else "LIVE market data, feed=" + FEED)
     load_setup_hist()
+    load_setup_stats()
     try:
         srv = Server((C.HOST, PORT), H)
     except OSError:
@@ -1726,6 +1810,7 @@ def main():
         log.warning("Level 2: Schwab login needed. Run: python momentum_scanner.py --schwab-login (or use the dashboard).")
     else:
         log.info("Level 2: Schwab connected (login valid %.1f more days).", L2.auth.days_left())
+    L2.on_tick = on_tick
     L2.start(STOP, NOTIFIER)
     threading.Thread(target=scan_loop, daemon=True, name="scan").start()
     if not DEMO:
@@ -1733,7 +1818,7 @@ def main():
     ALERTS.startup()
 
     def stop(*_):
-        STOP.set()
+        STOP.set(); WAKE.set()
         threading.Thread(target=srv.shutdown, daemon=True).start()
     _SHUTDOWN[0] = stop
     for sig_name in ("SIGTERM", "SIGINT"):

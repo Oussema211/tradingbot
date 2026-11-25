@@ -91,6 +91,13 @@ NTFY_TOKEN = env("NTFY_TOKEN")
 DISCORD_WEBHOOK = env("DISCORD_WEBHOOK_URL")
 ALERT_LEVEL = env("ALERT_LEVEL", "buy").lower()  # ready = GET READY + BUY, buy = only BUY signals
 ALERT_MIN_SCORE = int(env_float("ALERT_MIN_SCORE", 60))
+# Hard gates: a stock failing any of these pillars is NO TRADE (never GET READY or BUY). Empty = old weighted behavior.
+# Keys: price, float, rvol, volume, catalyst. An unknown float (data blocked) doesn't block; the catalyst must be a real one.
+MUST_PILLARS = [x.strip() for x in env("MUST_PILLARS", "price,float,rvol,catalyst").lower().split(",") if x.strip()]
+# Backtest stats (python replay.py --days 40 --save-stats): each alert shows its setup's track record, and a setup
+# whose backtest lost money over at least STATS_MIN_TRADES trades is muted (NO TRADE). MUTE_LOSING_SETUPS=0 = show only.
+MUTE_LOSING_SETUPS = env_bool("MUTE_LOSING_SETUPS", True)
+STATS_MIN_TRADES = int(env_float("STATS_MIN_TRADES", 12))
 ALERT_MARKET_EVENTS = env_bool("ALERT_MARKET_EVENTS", True)
 PUBLIC_URL = env("PUBLIC_URL").rstrip("/")         # e.g. https://desk.example.com, added as a link in alerts
 
@@ -115,5 +122,6 @@ LOG_FILE = os.path.join(DATA_DIR, "signals_log.csv")
 ALERT_STATE_FILE = os.path.join(DATA_DIR, "alert_state.json")
 TRADES_FILE = os.path.join(DATA_DIR, "trades_state.json")
 TRADE_LOG = os.path.join(DATA_DIR, "trades_log.csv")
+STATS_FILE = os.path.join(DATA_DIR, "setup_stats.json")      # written by replay.py --save-stats
 SCHWAB_TOKEN_FILE = os.path.join(DATA_DIR, "schwab_tokens.json")   # your Schwab login: keep it private like .env
 WEB_FILE = os.path.join(HERE, "web", "index.html")

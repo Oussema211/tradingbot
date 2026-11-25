@@ -281,6 +281,7 @@ class Level2:
         self.lock = threading.RLock()
         self.status, self.err, self.connected_at, self.last_msg = "off", None, 0, 0
         self.warned_day = None
+        self.on_tick = None                      # callback(sym, last_price) on every streamed trade print
 
     # ---------------------------------------------------------------- public
     @property
@@ -436,6 +437,12 @@ class Level2:
                             if k in c:
                                 q[name] = _num(c[k])
                         q["t"] = now
+                        last = q.get("last") if "3" in c else None
+                    if last and self.on_tick:
+                        try:
+                            self.on_tick(sym, last)
+                        except Exception:
+                            log.exception("tick callback failed")
 
     def _book(self, sym):
         """The freshest non-empty book for a symbol (Nasdaq book for Nasdaq stocks, NYSE book for NYSE stocks)."""
